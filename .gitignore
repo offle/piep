@@ -1,0 +1,16 @@
+.DS_Store
+
+# Xcode user-local state
+xcuserdata/
+*.xcuserstate
+*.xcbkptlist
+
+# CocoaPods dependencies are restored with `pod install`.
+Pods/
+
+# Local build/deploy configuration
+xcbuild.conf
+xcbuild.local.conf
+
+# Local xcodebuild output
+build/

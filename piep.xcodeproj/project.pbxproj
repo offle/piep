@@ -1,0 +1,613 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0FCEA8F7C8104CB5630418DD /* ATTRIBUTION.md in Resources */ = {isa = PBXBuildFile; fileRef = 0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */; };
+		289703BD4C5EB2C84F6E18CD /* Pods_piep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1F81ECC049674535450C57D /* Pods_piep.framework */; };
+		B2AD0B6903D1575DD0E5C5CA /* parus_major_xc129643.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 628E02409D775B2C1CEBE994 /* parus_major_xc129643.mp3 */; };
+		CA7E4FAB55E210488B6A0F1E /* turdus_merula_xc125792.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F50B4FBCCE81389945312C1D /* turdus_merula_xc125792.mp3 */; };
+		CE9122B2A7B51A86100F9A04 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE0BD9A7E3310225FDD1EAF /* Foundation.framework */; };
+		D30188C52DDCC0A17417D00A /* Pods_piepTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D4917B9432E1A7A1FB83EC4 /* Pods_piepTests.framework */; };
+		D56341730E1FB34591461EC7 /* BirdNETClassifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C159C779A51DB4075B54866 /* BirdNETClassifierTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5E9BDA834321CD53177ED359 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7F9C904A2FCF71E200573AFC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7F9C90512FCF71E200573AFC;
+			remoteInfo = piep;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */ = {isa = PBXFileReference; includeInIndex = 1; path = ATTRIBUTION.md; sourceTree = "<group>"; };
+		1C159C779A51DB4075B54866 /* BirdNETClassifierTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BirdNETClassifierTests.swift; sourceTree = "<group>"; };
+		2114D476DE9D38A838A6AD11 /* Pods-piepTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-piepTests.debug.xcconfig"; path = "Target Support Files/Pods-piepTests/Pods-piepTests.debug.xcconfig"; sourceTree = "<group>"; };
+		628E02409D775B2C1CEBE994 /* parus_major_xc129643.mp3 */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = audio.mp3; path = parus_major_xc129643.mp3; sourceTree = "<group>"; };
+		7F9C90522FCF71E200573AFC /* piep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = piep.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		833DAC347AAB9D5B04A3641C /* piepTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = piepTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8D4917B9432E1A7A1FB83EC4 /* Pods_piepTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_piepTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A4EEAF536C17F15F4A0DD314 /* Pods-piep.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-piep.release.xcconfig"; path = "Target Support Files/Pods-piep/Pods-piep.release.xcconfig"; sourceTree = "<group>"; };
+		A83EAA7EAE7CBD6D1B15E0FE /* Pods-piep.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-piep.debug.xcconfig"; path = "Target Support Files/Pods-piep/Pods-piep.debug.xcconfig"; sourceTree = "<group>"; };
+		B1F81ECC049674535450C57D /* Pods_piep.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_piep.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		CDE0BD9A7E3310225FDD1EAF /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		DA6B029617470F62698AC1C9 /* Pods-piepTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-piepTests.release.xcconfig"; path = "Target Support Files/Pods-piepTests/Pods-piepTests.release.xcconfig"; sourceTree = "<group>"; };
+		F50B4FBCCE81389945312C1D /* turdus_merula_xc125792.mp3 */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = audio.mp3; path = turdus_merula_xc125792.mp3; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		7F9C90542FCF71E200573AFC /* piep */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
+			path = piep;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0622EEAE4C6E42C773FEFA1C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE9122B2A7B51A86100F9A04 /* Foundation.framework in Frameworks */,
+				D30188C52DDCC0A17417D00A /* Pods_piepTests.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7F9C904F2FCF71E200573AFC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				289703BD4C5EB2C84F6E18CD /* Pods_piep.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1F6473A0343DBEBB420F6F79 /* piepTests */ = {
+			isa = PBXGroup;
+			children = (
+				9E537269048D3BDF3397DAC7 /* Resources */,
+				1C159C779A51DB4075B54866 /* BirdNETClassifierTests.swift */,
+			);
+			name = piepTests;
+			path = piepTests;
+			sourceTree = "<group>";
+		};
+		4ADC0A74408067025FABCCBA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B1F81ECC049674535450C57D /* Pods_piep.framework */,
+				7B7D19EC3052707A970DD96D /* iOS */,
+				8D4917B9432E1A7A1FB83EC4 /* Pods_piepTests.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		7B7D19EC3052707A970DD96D /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				CDE0BD9A7E3310225FDD1EAF /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		7F9C90492FCF71E200573AFC = {
+			isa = PBXGroup;
+			children = (
+				7F9C90542FCF71E200573AFC /* piep */,
+				7F9C90532FCF71E200573AFC /* Products */,
+				FE95BF967EC7AC0A89CC62F1 /* Pods */,
+				4ADC0A74408067025FABCCBA /* Frameworks */,
+				1F6473A0343DBEBB420F6F79 /* piepTests */,
+			);
+			sourceTree = "<group>";
+		};
+		7F9C90532FCF71E200573AFC /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7F9C90522FCF71E200573AFC /* piep.app */,
+				833DAC347AAB9D5B04A3641C /* piepTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9E537269048D3BDF3397DAC7 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				F50B4FBCCE81389945312C1D /* turdus_merula_xc125792.mp3 */,
+				628E02409D775B2C1CEBE994 /* parus_major_xc129643.mp3 */,
+				0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */,
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		FE95BF967EC7AC0A89CC62F1 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				A83EAA7EAE7CBD6D1B15E0FE /* Pods-piep.debug.xcconfig */,
+				A4EEAF536C17F15F4A0DD314 /* Pods-piep.release.xcconfig */,
+				DA6B029617470F62698AC1C9 /* Pods-piepTests.release.xcconfig */,
+				2114D476DE9D38A838A6AD11 /* Pods-piepTests.debug.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7F9C90512FCF71E200573AFC /* piep */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7F9C905F2FCF71E400573AFC /* Build configuration list for PBXNativeTarget "piep" */;
+			buildPhases = (
+				3936608B0963790DECED943C /* [CP] Check Pods Manifest.lock */,
+				7F9C904E2FCF71E200573AFC /* Sources */,
+				7F9C904F2FCF71E200573AFC /* Frameworks */,
+				7F9C90502FCF71E200573AFC /* Resources */,
+				425CB74894FC14AE956D83CF /* [CP] Copy Pods Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7F9C90542FCF71E200573AFC /* piep */,
+			);
+			name = piep;
+			productName = piep;
+			productReference = 7F9C90522FCF71E200573AFC /* piep.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B255D59B99820A7ED238AEFC /* piepTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B4354C8DE648A6869ABD058 /* Build configuration list for PBXNativeTarget "piepTests" */;
+			buildPhases = (
+				64D30DAD347050DD26A968AA /* [CP] Check Pods Manifest.lock */,
+				33601E7B53B82EC4167C9D5C /* Sources */,
+				0622EEAE4C6E42C773FEFA1C /* Frameworks */,
+				5FAE1934D0D5F8E26A35C162 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FCE18A0B1EF29179B930575A /* PBXTargetDependency */,
+			);
+			name = piepTests;
+			productName = piepTests;
+			productReference = 833DAC347AAB9D5B04A3641C /* piepTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7F9C904A2FCF71E200573AFC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					7F9C90512FCF71E200573AFC = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = 7F9C904D2FCF71E200573AFC /* Build configuration list for PBXProject "piep" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 7F9C90492FCF71E200573AFC;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7F9C90532FCF71E200573AFC /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7F9C90512FCF71E200573AFC /* piep */,
+				B255D59B99820A7ED238AEFC /* piepTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5FAE1934D0D5F8E26A35C162 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CA7E4FAB55E210488B6A0F1E /* turdus_merula_xc125792.mp3 in Resources */,
+				B2AD0B6903D1575DD0E5C5CA /* parus_major_xc129643.mp3 in Resources */,
+				0FCEA8F7C8104CB5630418DD /* ATTRIBUTION.md in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7F9C90502FCF71E200573AFC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		3936608B0963790DECED943C /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-piep-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		425CB74894FC14AE956D83CF /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-piep/Pods-piep-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-piep/Pods-piep-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-piep/Pods-piep-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		64D30DAD347050DD26A968AA /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-piepTests-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		33601E7B53B82EC4167C9D5C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D56341730E1FB34591461EC7 /* BirdNETClassifierTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7F9C904E2FCF71E200573AFC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FCE18A0B1EF29179B930575A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = piep;
+			target = 7F9C90512FCF71E200573AFC /* piep */;
+			targetProxy = 5E9BDA834321CD53177ED359 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		7F9C905D2FCF71E400573AFC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		7F9C905E2FCF71E400573AFC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7F9C90602FCF71E400573AFC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A83EAA7EAE7CBD6D1B15E0FE /* Pods-piep.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "ClassicAppIcon AppIcon0019";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "piep benötigt den Standort, um die Erkennungsgenauigkeit anhand regionaler Vogelvorkommen zu verbessern.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "piep benötigt Zugriff auf das Mikrofon, um Vogelstimmen in der Umgebung aufzunehmen und zu analysieren.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+					DEVELOPMENT_TEAM = UTV3GNF672;
+					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7F9C90612FCF71E400573AFC /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A4EEAF536C17F15F4A0DD314 /* Pods-piep.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "ClassicAppIcon AppIcon0019";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "piep benötigt den Standort, um die Erkennungsgenauigkeit anhand regionaler Vogelvorkommen zu verbessern.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "piep benötigt Zugriff auf das Mikrofon, um Vogelstimmen in der Umgebung aufzunehmen und zu analysieren.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+					DEVELOPMENT_TEAM = UTV3GNF672;
+					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E617F4D565E6ABB3215C691F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2114D476DE9D38A838A6AD11 /* Pods-piepTests.debug.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(BUILT_PRODUCTS_DIR)/piep.app/piep";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+					DEVELOPMENT_TEAM = UTV3GNF672;
+					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piepTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/piep.app/piep";
+			};
+			name = Debug;
+		};
+		F288D0FBDE4E659E19E6371E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = DA6B029617470F62698AC1C9 /* Pods-piepTests.release.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(BUILT_PRODUCTS_DIR)/piep.app/piep";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+					DEVELOPMENT_TEAM = UTV3GNF672;
+					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piepTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/piep.app/piep";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3B4354C8DE648A6869ABD058 /* Build configuration list for PBXNativeTarget "piepTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F288D0FBDE4E659E19E6371E /* Release */,
+				E617F4D565E6ABB3215C691F /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7F9C904D2FCF71E200573AFC /* Build configuration list for PBXProject "piep" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7F9C905D2FCF71E400573AFC /* Debug */,
+				7F9C905E2FCF71E400573AFC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7F9C905F2FCF71E400573AFC /* Build configuration list for PBXNativeTarget "piep" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7F9C90602FCF71E400573AFC /* Debug */,
+				7F9C90612FCF71E400573AFC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 7F9C904A2FCF71E200573AFC /* Project object */;
+}
