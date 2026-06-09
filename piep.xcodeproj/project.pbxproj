@@ -27,7 +27,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */ = {isa = PBXFileReference; includeInIndex = 1; path = ATTRIBUTION.md; sourceTree = "<group>"; };
+		0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; path = ATTRIBUTION.md; sourceTree = "<group>"; };
 		1C159C779A51DB4075B54866 /* BirdNETClassifierTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BirdNETClassifierTests.swift; sourceTree = "<group>"; };
 		2114D476DE9D38A838A6AD11 /* Pods-piepTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-piepTests.debug.xcconfig"; path = "Target Support Files/Pods-piepTests/Pods-piepTests.debug.xcconfig"; sourceTree = "<group>"; };
 		628E02409D775B2C1CEBE994 /* parus_major_xc129643.mp3 */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = audio.mp3; path = parus_major_xc129643.mp3; sourceTree = "<group>"; };
@@ -45,8 +45,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7F9C90542FCF71E200573AFC /* piep */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = piep;
 			sourceTree = "<group>";
 		};
@@ -79,7 +77,6 @@
 				9E537269048D3BDF3397DAC7 /* Resources */,
 				1C159C779A51DB4075B54866 /* BirdNETClassifierTests.swift */,
 			);
-			name = piepTests;
 			path = piepTests;
 			sourceTree = "<group>";
 		};
@@ -128,7 +125,6 @@
 				628E02409D775B2C1CEBE994 /* parus_major_xc129643.mp3 */,
 				0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */,
 			);
-			name = Resources;
 			path = Resources;
 			sourceTree = "<group>";
 		};
@@ -140,7 +136,6 @@
 				DA6B029617470F62698AC1C9 /* Pods-piepTests.release.xcconfig */,
 				2114D476DE9D38A838A6AD11 /* Pods-piepTests.debug.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -196,7 +191,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					7F9C90512FCF71E200573AFC = {
 						CreatedOnToolsVersion = 26.3;
@@ -204,11 +199,11 @@
 				};
 			};
 			buildConfigurationList = 7F9C904D2FCF71E200573AFC /* Build configuration list for PBXProject "piep" */;
-			developmentRegion = en;
+			developmentRegion = de;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
 				Base,
+				de,
 			);
 			mainGroup = 7F9C90492FCF71E200573AFC;
 			minimizedProjectReferenceProxies = 1;
@@ -274,9 +269,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-piep/Pods-piep-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-piep/Pods-piep-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -370,6 +369,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = UTV3GNF672;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -393,6 +393,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -433,6 +434,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = UTV3GNF672;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -449,6 +451,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -458,14 +461,15 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A83EAA7EAE7CBD6D1B15E0FE /* Pods-piep.debug.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "ClassicAppIcon AppIcon0019";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "piep benötigt den Standort, um die Erkennungsgenauigkeit anhand regionaler Vogelvorkommen zu verbessern.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "piep benötigt Zugriff auf das Mikrofon, um Vogelstimmen in der Umgebung aufzunehmen und zu analysieren.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -478,8 +482,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-					DEVELOPMENT_TEAM = UTV3GNF672;
-					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
+				PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -495,14 +498,15 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A4EEAF536C17F15F4A0DD314 /* Pods-piep.release.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "ClassicAppIcon AppIcon0019";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "piep benötigt den Standort, um die Erkennungsgenauigkeit anhand regionaler Vogelvorkommen zu verbessern.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "piep benötigt Zugriff auf das Mikrofon, um Vogelstimmen in der Umgebung aufzunehmen und zu analysieren.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -515,8 +519,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-					DEVELOPMENT_TEAM = UTV3GNF672;
-					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
+				PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -542,8 +545,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-					DEVELOPMENT_TEAM = UTV3GNF672;
-					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piepTests;
+				PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piepTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -566,8 +568,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-					DEVELOPMENT_TEAM = UTV3GNF672;
-					PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piepTests;
+				PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piepTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
