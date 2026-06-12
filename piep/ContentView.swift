@@ -166,6 +166,7 @@ final class BirdListeningViewModel {
     var recentAnalysisDurations: [TimeInterval] = []
     var lastPreprocessingMessage = "Noch keine Audio-Vorverarbeitung"
     var detectionFlashTokens: [String: Int] = [:]
+    var lowConfidenceDetections: [BirdDetection] = []
 
     let analysisChunkDuration: TimeInterval = 3.0
     let analysisInterval: TimeInterval = 1.0
@@ -264,6 +265,7 @@ final class BirdListeningViewModel {
             isAudioPausedForSpeech = false
             detections = []
             lastTopCandidates = []
+            lowConfidenceDetections = []
             recentDetectionEvents = []
             recentAnalysisDurations = []
             lastPreprocessingMessage = "Sammle Audio"
@@ -281,6 +283,7 @@ final class BirdListeningViewModel {
     }
 
     func stopListening(modelContext: ModelContext) {
+        reconcileDetectionsForCurrentThreshold(modelContext: modelContext)
         analysisTimer?.invalidate()
         analysisTimer = nil
         audioInput.stop()
@@ -461,11 +464,20 @@ final class BirdListeningViewModel {
             let results = candidates.filter {
                 $0.confidence >= threshold
             }
+            let lowConfidenceResults = candidates.filter {
+                $0.confidence >= 0.05
+                    && $0.confidence < threshold
+                    && !$0.isExcludedHumanSound
+            }
             await MainActor.run {
                 guard let self else { return }
                 self.recordAnalysisDuration(analysisDuration)
                 self.lastTopCandidates = candidates
                 self.detections = results
+                self.recordLowConfidenceDetections(
+                    lowConfidenceResults,
+                    promotedDetections: results
+                )
                 self.lastPreprocessingMessage = preprocessingMessage
                 self.recordRecentDetectionEvents(results)
                 self.recordDetections(results)
@@ -503,6 +515,36 @@ final class BirdListeningViewModel {
         }
 
         return bestBySpecies.values.sorted { $0.confidence > $1.confidence }
+    }
+
+    private func recordLowConfidenceDetections(
+        _ detections: [BirdDetection],
+        promotedDetections: [BirdDetection]
+    ) {
+        let promotedScientificNames = Set(promotedDetections.map(\.scientificName))
+        var bestBySpecies = Dictionary(
+            uniqueKeysWithValues: lowConfidenceDetections
+                .filter { !promotedScientificNames.contains($0.scientificName) }
+                .map { ($0.scientificName, $0) }
+        )
+
+        for detection in detections where !promotedScientificNames.contains(detection.scientificName) {
+            if let existing = bestBySpecies[detection.scientificName],
+               existing.confidence >= detection.confidence
+            {
+                continue
+            }
+
+            bestBySpecies[detection.scientificName] = detection
+        }
+
+        lowConfidenceDetections = bestBySpecies.values.sorted {
+            if $0.confidence != $1.confidence {
+                return $0.confidence > $1.confidence
+            }
+
+            return $0.germanName.localizedStandardCompare($1.germanName) == .orderedAscending
+        }
     }
 
     private func recordAnalysisDuration(_ duration: TimeInterval) {
@@ -624,6 +666,62 @@ final class BirdListeningViewModel {
         try? activeModelContext.save()
     }
 
+    func reconcileDetectionsForCurrentThreshold(modelContext: ModelContext) {
+        guard activeSession != nil else { return }
+        activeModelContext = modelContext
+        let threshold = AppSettings.confidenceThreshold
+
+        demoteSavedDetectionsBelowThreshold(threshold, modelContext: modelContext)
+
+        let promotedDetections = lowConfidenceDetections.filter {
+            $0.confidence >= threshold
+        }
+        if !promotedDetections.isEmpty {
+            let promotedScientificNames = Set(promotedDetections.map(\.scientificName))
+            lowConfidenceDetections.removeAll {
+                promotedScientificNames.contains($0.scientificName)
+            }
+            detections = Self.mergedDetectionsByBestConfidence(detections + promotedDetections)
+                .filter { $0.confidence >= threshold }
+            recordDetections(promotedDetections)
+        }
+
+        lowConfidenceDetections = Self.mergedDetectionsByBestConfidence(
+            lowConfidenceDetections.filter { $0.confidence < threshold }
+        )
+    }
+
+    private func demoteSavedDetectionsBelowThreshold(
+        _ threshold: Float,
+        modelContext: ModelContext
+    ) {
+        guard let activeSession else { return }
+        let demotedObservations = activeSession.reviewedDetections.filter {
+            $0.bestConfidence < threshold
+        }
+        guard !demotedObservations.isEmpty else { return }
+
+        let demotedDetections = demotedObservations.map {
+            BirdDetection(
+                scientificName: $0.scientificName,
+                germanName: $0.germanName,
+                confidence: $0.bestConfidence
+            )
+        }
+
+        for observation in demotedObservations {
+            modelContext.delete(observation)
+        }
+
+        detections = Self.mergedDetectionsByBestConfidence(
+            detections + demotedDetections
+        )
+        lowConfidenceDetections = Self.mergedDetectionsByBestConfidence(
+            lowConfidenceDetections + demotedDetections
+        )
+        try? modelContext.save()
+    }
+
     private func triggerDetectionFlash(for scientificName: String) {
         detectionFlashTokens[scientificName, default: 0] += 1
     }
@@ -656,7 +754,7 @@ final class BirdListeningViewModel {
 }
 
 private extension BirdDetection {
-    var isExcludedHumanSound: Bool {
+    nonisolated var isExcludedHumanSound: Bool {
         scientificName.hasPrefix("Human ")
             || germanName.hasPrefix("Mensch ")
     }
@@ -709,37 +807,49 @@ struct ContentView: View {
     @State private var viewModel = BirdListeningViewModel()
     @State private var spokenBirdName: String?
     @State private var speechFeedbackTask: Task<Void, Never>?
+    @State private var isDebugPresented = false
     @AppStorage(AppSettings.keepScreenOnWhileRecordingKey)
     private var keepScreenOnWhileRecording = AppSettings.defaultKeepScreenOnWhileRecording
 
     var body: some View {
-        TabView {
-            NavigationStack {
-                ListeningView(viewModel: viewModel)
+        VStack(spacing: 0) {
+            GlobalRecordingHeader(
+                viewModel: viewModel,
+                onDebug: { isDebugPresented = true }
+            )
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+            .padding(.bottom, 6)
+            .background(.ultraThinMaterial)
+
+            TabView {
+                NavigationStack {
+                    ListeningView(viewModel: viewModel)
+                }
+                    .tabItem {
+                        Label("Zuhören", systemImage: "waveform")
+                    }
+
+                SessionsView()
+                    .tabItem {
+                        Label("Sessions", systemImage: "list.bullet.rectangle")
+                    }
+
+                BirdOverviewView()
+                    .tabItem {
+                        Label("Vögel", systemImage: "bird.fill")
+                    }
+
+                BirdMapView()
+                    .tabItem {
+                        Label("Karte", systemImage: "map.fill")
+                    }
+
+                SettingsView()
+                    .tabItem {
+                        Label("Einstellungen", systemImage: "slider.horizontal.3")
+                    }
             }
-                .tabItem {
-                    Label("Zuhören", systemImage: "waveform")
-                }
-
-            SessionsView()
-                .tabItem {
-                    Label("Sessions", systemImage: "list.bullet.rectangle")
-                }
-
-            BirdOverviewView()
-                .tabItem {
-                    Label("Vögel", systemImage: "bird.fill")
-                }
-
-            BirdMapView()
-                .tabItem {
-                    Label("Karte", systemImage: "map.fill")
-                }
-
-            SettingsView()
-                .tabItem {
-                    Label("Einstellungen", systemImage: "slider.horizontal.3")
-                }
         }
         .onAppear {
             viewModel.loadModel()
@@ -764,10 +874,15 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             if let spokenBirdName {
                 SpeechFeedbackBanner(name: spokenBirdName)
-                    .padding(.top, 12)
+                    .padding(.top, 64)
                     .padding(.horizontal, 16)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+        }
+        .sheet(isPresented: $isDebugPresented) {
+            ListeningDebugView(viewModel: viewModel)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .animation(.spring(duration: 0.28), value: spokenBirdName)
         .animation(.spring(duration: 0.28), value: viewModel.isListening)
@@ -786,6 +901,222 @@ struct ContentView: View {
         UIApplication.shared.isIdleTimerDisabled =
             keepScreenOnWhileRecording && viewModel.isListening
     }
+}
+
+struct GlobalRecordingHeader: View {
+
+    @Bindable var viewModel: BirdListeningViewModel
+    @Environment(\.modelContext) private var modelContext
+    @State private var isConfirmingDisplayedSessionDeletion = false
+
+    var onDebug: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            recordButton
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    stateDot
+                    Text(primaryText)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+
+                Text(secondaryText)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if !viewModel.isModelLoaded {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.secondary)
+            }
+
+            Button(action: onDebug) {
+                Image(systemName: "questionmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        Circle()
+                            .fill(.regularMaterial)
+                            .stroke(.quaternary, lineWidth: 0.5)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Debug anzeigen")
+
+            if canDeleteDisplayedSession {
+                Button(role: .destructive) {
+                    isConfirmingDisplayedSessionDeletion = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color(red: 0.95, green: 0.40, blue: 0.35))
+                .accessibilityLabel("Letzte Session löschen")
+                .popover(
+                    isPresented: $isConfirmingDisplayedSessionDeletion,
+                    attachmentAnchor: .rect(.bounds),
+                    arrowEdge: .top
+                ) {
+                    DeleteDisplayedSessionPopover(
+                        onCancel: {
+                            isConfirmingDisplayedSessionDeletion = false
+                        },
+                        onDelete: {
+                            deleteDisplayedSession()
+                            isConfirmingDisplayedSessionDeletion = false
+                        }
+                    )
+                    .presentationCompactAdaptation(.popover)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.regularMaterial)
+                .stroke(.quaternary, lineWidth: 0.5)
+        )
+    }
+
+    private var recordButton: some View {
+        Button(action: { viewModel.toggleListening(modelContext: modelContext) }) {
+            ZStack {
+                Circle()
+                    .stroke(
+                        viewModel.isListening
+                            ? Color.accentColor
+                            : .secondary.opacity(0.28),
+                        lineWidth: viewModel.isListening
+                            ? 2 + CGFloat(viewModel.audioLevel * 18)
+                            : 1.5
+                    )
+                    .frame(width: 42, height: 42)
+                    .animation(.easeOut(duration: 0.15), value: viewModel.audioLevel)
+
+                Circle()
+                    .fill(
+                        viewModel.isListening
+                            ? LinearGradient(
+                                colors: [
+                                    Color(red: 0.20, green: 0.65, blue: 0.40),
+                                    Color.accentColor,
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            : LinearGradient(
+                                colors: [
+                                    .secondary.opacity(0.18),
+                                    .secondary.opacity(0.08),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                    )
+                    .frame(width: 36, height: 36)
+
+                Image(systemName: viewModel.isListening ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(viewModel.isListening ? .white : .primary)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!viewModel.isModelLoaded)
+        .opacity(viewModel.isModelLoaded ? 1 : 0.5)
+        .accessibilityLabel(viewModel.isListening ? "Aufnahme stoppen" : "Aufnahme starten")
+    }
+
+    private var stateDot: some View {
+        Circle()
+            .fill(viewModel.isListening ? Color(red: 0.95, green: 0.22, blue: 0.18) : .secondary.opacity(0.35))
+            .frame(width: 7, height: 7)
+            .overlay {
+                if viewModel.isListening {
+                    Circle()
+                        .stroke(Color(red: 0.95, green: 0.22, blue: 0.18).opacity(0.45), lineWidth: 2)
+                        .frame(
+                            width: 13 + CGFloat(min(viewModel.audioLevel * 60, 8)),
+                            height: 13 + CGFloat(min(viewModel.audioLevel * 60, 8))
+                        )
+                }
+            }
+            .frame(width: 18, height: 18)
+    }
+
+    private var primaryText: String {
+        if !viewModel.isModelLoaded {
+            return "Modell wird geladen"
+        }
+
+        if let session = viewModel.displayedSession {
+            let state = viewModel.isListening ? "Höre zu" : "Letzte Session"
+            return "\(state) · \(session.locationDescription)"
+        }
+
+        return "Bereit"
+    }
+
+    private var secondaryText: String {
+        guard let session = viewModel.displayedSession else {
+            return viewModel.isListening
+                ? viewModel.lastAnalysisMessage
+                : "Startet eine neue Session"
+        }
+
+        let duration = Self.durationFormatter.string(from: session.duration) ?? "0:00"
+        let count = session.reviewedDetections.count
+        let speciesText = count == 1 ? "1 Art" : "\(count) Arten"
+
+        if viewModel.isListening {
+            return "\(duration) · \(speciesText) · \(viewModel.lastAnalysisMessage)"
+        }
+
+        return "\(duration) · \(speciesText)"
+    }
+
+    private var canDeleteDisplayedSession: Bool {
+        !viewModel.isListening && viewModel.displayedSession != nil
+    }
+
+    private func deleteDisplayedSession() {
+        guard !viewModel.isListening, let session = viewModel.displayedSession else {
+            return
+        }
+
+        for detection in session.detections {
+            modelContext.delete(detection)
+        }
+        modelContext.delete(session)
+        try? modelContext.save()
+        cleanupOrphanedBirdSpecies(in: modelContext)
+
+        viewModel.displayedSession = nil
+        viewModel.detections = []
+        viewModel.lastTopCandidates = []
+        viewModel.lowConfidenceDetections = []
+        viewModel.recentDetectionEvents = []
+        viewModel.lastAnalysisMessage = "Session gelöscht"
+    }
+
+    private static let durationFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .positional
+        formatter.zeroFormattingBehavior = [.pad]
+        return formatter
+    }()
 }
 
 struct SpeechFeedbackBanner: View {
@@ -827,12 +1158,31 @@ private func cleanupOrphanedBirdSpecies(in modelContext: ModelContext) {
 
 // MARK: - Listening View
 
+private enum ListeningDetectionSort: String, CaseIterable, Identifiable {
+    case frequency
+    case confidence
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .frequency:
+            return "Häufigkeit"
+        case .confidence:
+            return "Genauigkeit"
+        }
+    }
+}
+
 struct ListeningView: View {
 
     @Bindable var viewModel: BirdListeningViewModel
     @Environment(\.modelContext) private var modelContext
     @State private var isDebugPresented = false
     @State private var isConfirmingDisplayedSessionDeletion = false
+    @State private var detectionSort: ListeningDetectionSort = .frequency
+    @AppStorage(AppSettings.confidenceThresholdKey)
+    private var confidenceThreshold = AppSettings.defaultConfidenceThreshold
 
     var body: some View {
         ZStack {
@@ -840,11 +1190,8 @@ struct ListeningView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                listeningHeaderBar
-                    .padding(.top, 8)
-
                 detectionList
-                    .padding(.top, 10)
+                    .padding(.top, 8)
 
                 Spacer(minLength: 0)
             }
@@ -1102,7 +1449,11 @@ struct ListeningView: View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 if let session = viewModel.displayedSession {
-                    ForEach(session.reviewedDetections.sortedForListening) { detection in
+                    if !session.reviewedDetections.isEmpty {
+                        sortControl
+                    }
+
+                    ForEach(sortedListeningDetections(for: session)) { detection in
                         if let species = detection.species {
                             NavigationLink {
                                 BirdSpeciesDetailView(species: species)
@@ -1147,14 +1498,73 @@ struct ListeningView: View {
                             ))
                     }
                 }
+
+                lowConfidenceSection
             }
             .animation(.spring(duration: 0.4), value: viewModel.detections)
             .animation(
                 .spring(duration: 0.4),
                 value: viewModel.displayedSession?.detections.map(\.id) ?? []
             )
+            .animation(
+                .spring(duration: 0.4),
+                value: viewModel.lowConfidenceDetections
+            )
         }
         .scrollIndicators(.hidden)
+    }
+
+    private var sortControl: some View {
+        Picker("Sortierung", selection: $detectionSort) {
+            ForEach(ListeningDetectionSort.allCases) { sortMode in
+                Text(sortMode.title).tag(sortMode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .font(.system(size: 12, weight: .semibold, design: .rounded))
+        .padding(.bottom, 2)
+    }
+
+    @ViewBuilder
+    private var lowConfidenceSection: some View {
+        let detections = visibleLowConfidenceDetections
+        if !detections.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Unter Schwellwert")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 6)
+
+                ForEach(detections) { detection in
+                    LowConfidenceDetectionRow(detection: detection)
+                }
+            }
+        }
+    }
+
+    private var visibleLowConfidenceDetections: [BirdDetection] {
+        let savedNames = Set(
+            viewModel.displayedSession?.reviewedDetections.map(\.scientificName) ?? []
+        )
+        return viewModel.lowConfidenceDetections
+            .filter {
+                !savedNames.contains($0.scientificName)
+                    && $0.confidence < Float(confidenceThreshold)
+            }
+            .sorted {
+                if $0.confidence != $1.confidence {
+                    return $0.confidence > $1.confidence
+                }
+
+                return $0.germanName.localizedStandardCompare($1.germanName) == .orderedAscending
+            }
+    }
+
+    private func sortedListeningDetections(
+        for session: BirdSession
+    ) -> [SessionBirdDetection] {
+        session.reviewedDetections.sortedForListening(by: detectionSort)
     }
 
     private func deleteDisplayedSession() {
@@ -1172,6 +1582,7 @@ struct ListeningView: View {
         viewModel.displayedSession = nil
         viewModel.detections = []
         viewModel.lastTopCandidates = []
+        viewModel.lowConfidenceDetections = []
         viewModel.recentDetectionEvents = []
         viewModel.lastAnalysisMessage = "Session gelöscht"
     }
@@ -1220,10 +1631,43 @@ struct ListeningDebugView: View {
 
     let viewModel: BirdListeningViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage(AppSettings.confidenceThresholdKey)
+    private var confidenceThreshold = AppSettings.defaultConfidenceThreshold
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label("Threshold", systemImage: "scope")
+                            Spacer()
+                            Text("\(Int(confidenceThreshold * 100))%")
+                                .font(.headline.monospacedDigit())
+                                .foregroundStyle(.primary)
+                        }
+
+                        Slider(
+                            value: $confidenceThreshold,
+                            in: 0.05...0.95,
+                            step: 0.01
+                        ) {
+                            Text("Threshold")
+                        } minimumValueLabel: {
+                            Text("5%")
+                        } maximumValueLabel: {
+                            Text("95%")
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } footer: {
+                    Text("Änderungen gelten sofort für die laufende Analyse. Bereits erkannte Kandidaten über dem neuen Wert werden in die aktive Session übernommen.")
+                }
+                .onChange(of: confidenceThreshold) { _, _ in
+                    viewModel.reconcileDetectionsForCurrentThreshold(modelContext: modelContext)
+                }
+
                 Section("Audio") {
                     ProgressView(value: viewModel.audioBufferFill) {
                         Text("Buffer")
@@ -1348,16 +1792,31 @@ private extension Array where Element == SessionBirdDetection {
     }
 
     var sortedForListening: [SessionBirdDetection] {
-        sorted {
-            if $0.detectionCount != $1.detectionCount {
-                return $0.detectionCount > $1.detectionCount
+        sortedForListening(by: .frequency)
+    }
+
+    func sortedForListening(by sortMode: ListeningDetectionSort) -> [SessionBirdDetection] {
+        sorted { lhs, rhs in
+            switch sortMode {
+            case .frequency:
+                if lhs.detectionCount != rhs.detectionCount {
+                    return lhs.detectionCount > rhs.detectionCount
+                }
+
+                if lhs.bestConfidence != rhs.bestConfidence {
+                    return lhs.bestConfidence > rhs.bestConfidence
+                }
+            case .confidence:
+                if lhs.bestConfidence != rhs.bestConfidence {
+                    return lhs.bestConfidence > rhs.bestConfidence
+                }
+
+                if lhs.detectionCount != rhs.detectionCount {
+                    return lhs.detectionCount > rhs.detectionCount
+                }
             }
 
-            if $0.bestConfidence != $1.bestConfidence {
-                return $0.bestConfidence > $1.bestConfidence
-            }
-
-            return $0.lastDetectedAt > $1.lastDetectedAt
+            return lhs.lastDetectedAt > rhs.lastDetectedAt
         }
     }
 }
@@ -1420,7 +1879,8 @@ struct BirdMapView: View {
                     }
                 }
             }
-            .navigationTitle("Karte")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $selectedLocationPin) { pin in
                 BirdMapLocationDetailView(pin: pin)
                     .presentationDetents([.medium, .large])
@@ -1966,7 +2426,8 @@ struct SettingsView: View {
                     }
                 }
             }
-            .navigationTitle("Einstellungen")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .confirmationDialog(
                 "Bildercache wirklich löschen?",
                 isPresented: $isConfirmingCacheDeletion,
@@ -2954,7 +3415,8 @@ struct BirdOverviewView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("Vögel")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .task {
                 cleanupOrphanedBirdSpecies(in: modelContext)
             }
@@ -3251,7 +3713,8 @@ struct SessionsView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("Sessions")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -3805,6 +4268,50 @@ struct DiagnosticItem: View {
 }
 
 // MARK: - Detection Card
+
+struct LowConfidenceDetectionRow: View {
+
+    let detection: BirdDetection
+
+    var body: some View {
+        HStack(spacing: 10) {
+            BirdThumbnail(
+                scientificName: detection.scientificName,
+                size: 34,
+                accentColor: .secondary.opacity(0.45)
+            )
+            .opacity(0.58)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(detection.germanName)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(detection.scientificName)
+                    .font(.system(size: 10, weight: .regular, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .italic()
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Text("\(Int(detection.confidence * 100))%")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(.secondarySystemGroupedBackground).opacity(0.55))
+                .stroke(.quaternary.opacity(0.6), lineWidth: 0.5)
+        )
+        .opacity(0.72)
+    }
+}
 
 struct DetectionCard: View {
 
