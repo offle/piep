@@ -27,21 +27,17 @@ enum DetectionReviewStatus: String, Codable, CaseIterable {
 
 @Model
 final class BirdSpecies {
-    var id: UUID
-    var scientificName: String
-    var germanName: String
-
-    @Relationship(deleteRule: .cascade, inverse: \BirdSpeciesImage.species)
-    var images: [BirdSpeciesImage]
+    var id: UUID = UUID()
+    var scientificName: String = ""
+    var germanName: String = ""
 
     @Relationship(deleteRule: .nullify, inverse: \SessionSpeciesObservation.species)
-    var observations: [SessionSpeciesObservation]
+    var observations: [SessionSpeciesObservation] = []
 
     init(scientificName: String, germanName: String) {
         self.id = UUID()
         self.scientificName = scientificName
         self.germanName = germanName
-        self.images = []
         self.observations = []
     }
 
@@ -78,16 +74,17 @@ final class BirdSpecies {
 
 @Model
 final class BirdSpeciesImage {
-    var id: UUID
-    var title: String
-    var author: String
-    var license: String
-    var sourceURLString: String
-    var fileName: String
-    var createdAt: Date
-    var species: BirdSpecies?
+    var id: UUID = UUID()
+    var speciesScientificName: String = ""
+    var title: String = ""
+    var author: String = ""
+    var license: String = ""
+    var sourceURLString: String = ""
+    var fileName: String = ""
+    var createdAt: Date = Date()
 
     init(
+        speciesScientificName: String,
         title: String,
         author: String,
         license: String,
@@ -96,6 +93,7 @@ final class BirdSpeciesImage {
         createdAt: Date = Date()
     ) {
         self.id = UUID()
+        self.speciesScientificName = speciesScientificName
         self.title = title
         self.author = author
         self.license = license
@@ -111,15 +109,15 @@ final class BirdSpeciesImage {
 
 @Model
 final class BirdSession {
-    var id: UUID
-    var startedAt: Date
+    var id: UUID = UUID()
+    var startedAt: Date = Date()
     var endedAt: Date?
     var latitude: Double?
     var longitude: Double?
     var locationName: String?
 
     @Relationship(deleteRule: .cascade, inverse: \SessionSpeciesObservation.session)
-    var observations: [SessionSpeciesObservation]
+    var observations: [SessionSpeciesObservation] = []
 
     init(
         startedAt: Date = Date(),
@@ -203,12 +201,12 @@ final class BirdSession {
 
 @Model
 final class SessionSpeciesObservation {
-    var id: UUID
-    var bestConfidence: Float
-    var firstDetectedAt: Date
-    var lastDetectedAt: Date
-    var detectionCount: Int
-    var statusRawValue: String
+    var id: UUID = UUID()
+    var bestConfidence: Float = 0
+    var firstDetectedAt: Date = Date()
+    var lastDetectedAt: Date = Date()
+    var detectionCount: Int = 0
+    var statusRawValue: String = DetectionReviewStatus.confirmed.rawValue
     var session: BirdSession?
     var species: BirdSpecies?
 

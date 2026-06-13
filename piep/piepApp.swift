@@ -10,15 +10,14 @@ import SwiftData
 
 @main
 struct piepApp: App {
+    @AppStorage(AppSettings.iCloudSyncEnabledKey)
+    private var isCloudSyncEnabled = AppSettings.defaultICloudSyncEnabled
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .id(isCloudSyncEnabled)
         }
-        .modelContainer(for: [
-            BirdSpecies.self,
-            BirdSpeciesImage.self,
-            BirdSession.self,
-            SessionSpeciesObservation.self,
-        ])
+        .modelContainer(PiepModelContainer.make(isCloudSyncEnabled: isCloudSyncEnabled))
     }
 }

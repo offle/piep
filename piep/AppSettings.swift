@@ -16,6 +16,8 @@ enum AppSettings {
     nonisolated static let defaultBirdImageMaximumCount = 5
     nonisolated static let minimumBirdImageMaximumCount = 1
     nonisolated static let maximumBirdImageMaximumCount = 15
+    nonisolated static let iCloudSyncEnabledKey = "iCloudSyncEnabled"
+    nonisolated static let defaultICloudSyncEnabled = false
     nonisolated static let audioBandpassEnabledKey = "audioBandpassEnabled"
     nonisolated static let defaultAudioBandpassEnabled = true
     nonisolated static let audioHighpassCutoffHzKey = "audioHighpassCutoffHz"
@@ -56,6 +58,15 @@ enum AppSettings {
             maximumBirdImageMaximumCount,
             max(minimumBirdImageMaximumCount, defaults.integer(forKey: birdImageMaximumCountKey))
         )
+    }
+
+    nonisolated static var iCloudSyncEnabled: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: iCloudSyncEnabledKey) != nil else {
+            return defaultICloudSyncEnabled
+        }
+
+        return defaults.bool(forKey: iCloudSyncEnabledKey)
     }
 
     nonisolated static var audioPreprocessingSettings: AudioPreprocessingSettings {

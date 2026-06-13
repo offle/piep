@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import AVFoundation
 import Combine
+import CloudKit
 import MapKit
 import UIKit
 import UniformTypeIdentifiers
@@ -2341,6 +2342,9 @@ struct SettingsView: View {
     private var keepScreenOnWhileRecording = AppSettings.defaultKeepScreenOnWhileRecording
     @AppStorage(AppSettings.birdImageMaximumCountKey)
     private var birdImageMaximumCount = AppSettings.defaultBirdImageMaximumCount
+    @AppStorage(AppSettings.iCloudSyncEnabledKey)
+    private var isCloudSyncEnabled = AppSettings.defaultICloudSyncEnabled
+    @State private var iCloudAccountStatusText = "wird geprüft"
     @State private var isConfirmingCacheDeletion = false
 
     var body: some View {
@@ -2388,6 +2392,16 @@ struct SettingsView: View {
                     }
                 } footer: {
                     Text("Solange eine Aufnahme aktiv ist, verhindert die App das automatische Sperren des Bildschirms.")
+                }
+
+                Section {
+                    Toggle(isOn: $isCloudSyncEnabled) {
+                        Label("iCloud-Sync", systemImage: "icloud")
+                    }
+
+                    LabeledContent("Status", value: iCloudAccountStatusText)
+                } footer: {
+                    Text("Synchronisiert Vogelarten, Sessions und Funde über den privaten iCloud-Account. Bilder, Settings, Debugdaten und Benchmarkdaten bleiben lokal auf diesem Gerät.")
                 }
 
                 Section {
@@ -2462,6 +2476,14 @@ struct SettingsView: View {
             } message: {
                 Text("Die App lädt Vogelbilder danach erneut aus freien Quellen, sobald sie gebraucht werden.")
             }
+            .task {
+                await refreshICloudAccountStatus()
+            }
+            .onChange(of: isCloudSyncEnabled) { _, _ in
+                Task {
+                    await refreshICloudAccountStatus()
+                }
+            }
         }
     }
 
@@ -2476,6 +2498,30 @@ struct SettingsView: View {
     private var buildTimestampText: String {
         (Bundle.main.object(forInfoDictionaryKey: "PiepBuildTimestamp") as? String)
             ?? "Build-Zeit unbekannt"
+    }
+
+    private func refreshICloudAccountStatus() async {
+        do {
+            let status = try await CKContainer(
+                identifier: PiepModelContainer.cloudKitContainerIdentifier
+            ).accountStatus()
+            iCloudAccountStatusText = switch status {
+            case .available:
+                isCloudSyncEnabled ? "aktiv und verfügbar" : "verfügbar"
+            case .noAccount:
+                "nicht angemeldet"
+            case .restricted:
+                "eingeschränkt"
+            case .couldNotDetermine:
+                "nicht ermittelbar"
+            case .temporarilyUnavailable:
+                "temporär nicht verfügbar"
+            @unknown default:
+                "unbekannt"
+            }
+        } catch {
+            iCloudAccountStatusText = "Fehler beim Prüfen"
+        }
     }
 }
 
@@ -4895,30 +4941,26 @@ enum BirdImageLicensePersister {
     ) {
         for entry in entries {
             let scientificName = entry.scientificName
-            let descriptor = FetchDescriptor<BirdSpecies>(
-                predicate: #Predicate { species in
-                    species.scientificName == scientificName
+            let sourceURLString = entry.sourceURL.absoluteString
+            let descriptor = FetchDescriptor<BirdSpeciesImage>(
+                predicate: #Predicate { image in
+                    image.speciesScientificName == scientificName
+                        && image.sourceURLString == sourceURLString
                 }
             )
-            guard let species = try? modelContext.fetch(descriptor).first else {
-                continue
-            }
-
-            guard !species.images.contains(where: {
-                $0.sourceURLString == entry.sourceURL.absoluteString
-            }) else {
+            if (try? modelContext.fetch(descriptor).first) != nil {
                 continue
             }
 
             let image = BirdSpeciesImage(
+                speciesScientificName: entry.scientificName,
                 title: entry.title,
                 author: entry.credit,
                 license: entry.license,
                 sourceURL: entry.sourceURL,
                 fileName: "\(entry.scientificName)-cached"
             )
-            image.species = species
-            species.images.append(image)
+            modelContext.insert(image)
         }
 
         try? modelContext.save()
