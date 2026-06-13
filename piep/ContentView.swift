@@ -802,12 +802,21 @@ struct BirdSpeakButton: View {
 
 // MARK: - Main View
 
+private enum MainTab: Hashable {
+    case listening
+    case sessions
+    case birds
+    case map
+    case settings
+}
+
 struct ContentView: View {
 
     @State private var viewModel = BirdListeningViewModel()
     @State private var spokenBirdName: String?
     @State private var speechFeedbackTask: Task<Void, Never>?
     @State private var isDebugPresented = false
+    @State private var selectedTab: MainTab = .listening
     @AppStorage(AppSettings.keepScreenOnWhileRecordingKey)
     private var keepScreenOnWhileRecording = AppSettings.defaultKeepScreenOnWhileRecording
 
@@ -815,6 +824,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             GlobalRecordingHeader(
                 viewModel: viewModel,
+                onNavigateToListening: { selectedTab = .listening },
                 onDebug: { isDebugPresented = true }
             )
             .padding(.horizontal, 14)
@@ -822,33 +832,38 @@ struct ContentView: View {
             .padding(.bottom, 6)
             .background(.ultraThinMaterial)
 
-            TabView {
+            TabView(selection: $selectedTab) {
                 NavigationStack {
                     ListeningView(viewModel: viewModel)
                 }
                     .tabItem {
                         Label("Zuhören", systemImage: "waveform")
                     }
+                    .tag(MainTab.listening)
 
                 SessionsView()
                     .tabItem {
                         Label("Sessions", systemImage: "list.bullet.rectangle")
                     }
+                    .tag(MainTab.sessions)
 
                 BirdOverviewView()
                     .tabItem {
                         Label("Vögel", systemImage: "bird.fill")
                     }
+                    .tag(MainTab.birds)
 
                 BirdMapView()
                     .tabItem {
                         Label("Karte", systemImage: "map.fill")
                     }
+                    .tag(MainTab.map)
 
                 SettingsView()
                     .tabItem {
                         Label("Einstellungen", systemImage: "slider.horizontal.3")
                     }
+                    .tag(MainTab.settings)
             }
         }
         .onAppear {
@@ -909,26 +924,33 @@ struct GlobalRecordingHeader: View {
     @Environment(\.modelContext) private var modelContext
     @State private var isConfirmingDisplayedSessionDeletion = false
 
+    var onNavigateToListening: () -> Void
     var onDebug: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
             recordButton
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    stateDot
-                    Text(primaryText)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.primary)
+            Button(action: onNavigateToListening) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        stateDot
+                        Text(primaryText)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+
+                    Text(secondaryText)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-
-                Text(secondaryText)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Zum Zuhören-Tab wechseln")
 
             Spacer(minLength: 0)
 
