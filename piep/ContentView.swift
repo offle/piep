@@ -161,6 +161,7 @@ final class BirdListeningViewModel {
     var microphonePermission = "unbekannt"
     var lastTopCandidates: [BirdDetection] = []
     var recentDetectionEvents: [RecentBirdDetection] = []
+    var rawAnalysisWindows: [RawAnalysisWindow] = []
     var activeSession: BirdSession?
     var displayedSession: BirdSession?
     var recentAnalysisDurations: [TimeInterval] = []
@@ -267,6 +268,7 @@ final class BirdListeningViewModel {
             lastTopCandidates = []
             lowConfidenceDetections = []
             recentDetectionEvents = []
+            rawAnalysisWindows = []
             recentAnalysisDurations = []
             lastPreprocessingMessage = "Sammle Audio"
             audioBufferSamples = 0
@@ -451,6 +453,7 @@ final class BirdListeningViewModel {
                     self.skippedAnalysisCount += 1
                     self.lastTopCandidates = []
                     self.detections = []
+                    self.recordRawAnalysisWindow([])
                     self.lastPreprocessingMessage = preprocessingMessage
                     self.lastAnalysisMessage =
                         "Analyse \(self.analysisCount): kein relevantes Band-Signal"
@@ -473,6 +476,7 @@ final class BirdListeningViewModel {
                 guard let self else { return }
                 self.recordAnalysisDuration(analysisDuration)
                 self.lastTopCandidates = candidates
+                self.recordRawAnalysisWindow(candidates)
                 self.detections = results
                 self.recordLowConfidenceDetections(
                     lowConfidenceResults,
@@ -554,6 +558,59 @@ final class BirdListeningViewModel {
                 recentAnalysisDurations.count - 5
             )
         }
+    }
+
+    private func recordRawAnalysisWindow(_ detections: [BirdDetection]) {
+        let now = Date()
+        rawAnalysisWindows.append(
+            RawAnalysisWindow(
+                analysisNumber: analysisCount,
+                detectedAt: now,
+                detections: detections
+            )
+        )
+
+        let cutoff = now.addingTimeInterval(-130)
+        rawAnalysisWindows.removeAll { $0.detectedAt < cutoff }
+    }
+
+    func resetRawAnalysisWindows() {
+        rawAnalysisWindows = []
+    }
+
+    func rawDetectionSummaries(
+        inLast seconds: TimeInterval,
+        now: Date = Date()
+    ) -> [RawBirdDetectionSummary] {
+        let cutoff = now.addingTimeInterval(-seconds)
+        var summaries: [String: MutableRawBirdDetectionSummary] = [:]
+
+        for window in rawAnalysisWindows where window.detectedAt >= cutoff {
+            for detection in window.detections {
+                var summary = summaries[detection.scientificName]
+                    ?? MutableRawBirdDetectionSummary(
+                        scientificName: detection.scientificName,
+                        germanName: detection.germanName
+                    )
+                summary.add(detection: detection, detectedAt: window.detectedAt)
+                summaries[detection.scientificName] = summary
+            }
+        }
+
+        return summaries.values
+            .map { $0.summary }
+            .sorted {
+                if $0.maxConfidence != $1.maxConfidence {
+                    return $0.maxConfidence > $1.maxConfidence
+                }
+
+                if $0.hitCount != $1.hitCount {
+                    return $0.hitCount > $1.hitCount
+                }
+
+                return $0.germanName.localizedStandardCompare($1.germanName)
+                    == .orderedAscending
+            }
     }
 
     private func recordRecentDetectionEvents(_ detections: [BirdDetection]) {
@@ -772,6 +829,52 @@ struct RecentBirdDetection: Identifiable {
         self.germanName = detection.germanName
         self.confidence = detection.confidence
         self.detectedAt = detectedAt
+    }
+}
+
+struct RawAnalysisWindow: Identifiable {
+    let id = UUID()
+    let analysisNumber: Int
+    let detectedAt: Date
+    let detections: [BirdDetection]
+}
+
+struct RawBirdDetectionSummary: Identifiable {
+    var id: String { scientificName }
+    let scientificName: String
+    let germanName: String
+    let maxConfidence: Float
+    let averageConfidence: Float
+    let hitCount: Int
+    let lastDetectedAt: Date
+}
+
+private struct MutableRawBirdDetectionSummary {
+    let scientificName: String
+    let germanName: String
+    var maxConfidence: Float = 0
+    var confidenceSum: Float = 0
+    var hitCount = 0
+    var lastDetectedAt = Date.distantPast
+
+    mutating func add(detection: BirdDetection, detectedAt: Date) {
+        maxConfidence = max(maxConfidence, detection.confidence)
+        confidenceSum += detection.confidence
+        hitCount += 1
+        lastDetectedAt = max(lastDetectedAt, detectedAt)
+    }
+
+    var summary: RawBirdDetectionSummary {
+        RawBirdDetectionSummary(
+            scientificName: scientificName,
+            germanName: germanName,
+            maxConfidence: maxConfidence,
+            averageConfidence: hitCount > 0
+                ? confidenceSum / Float(hitCount)
+                : 0,
+            hitCount: hitCount,
+            lastDetectedAt: lastDetectedAt
+        )
     }
 }
 
@@ -1656,6 +1759,8 @@ struct ListeningDebugView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage(AppSettings.confidenceThresholdKey)
     private var confidenceThreshold = AppSettings.defaultConfidenceThreshold
+    @State private var selectedRawWindow: RawDebugWindow = .thirtySeconds
+    @State private var isAudioDetailsExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -1690,21 +1795,6 @@ struct ListeningDebugView: View {
                     viewModel.reconcileDetectionsForCurrentThreshold(modelContext: modelContext)
                 }
 
-                Section("Audio") {
-                    ProgressView(value: viewModel.audioBufferFill) {
-                        Text("Buffer")
-                    } currentValueLabel: {
-                        Text(String(format: "%.1f s", viewModel.audioBufferSeconds))
-                    }
-                    .tint(Color(red: 0.20, green: 0.65, blue: 0.40))
-
-                    LabeledContent("Pegel", value: String(format: "%.3f", viewModel.audioLevel))
-                    LabeledContent("Mikrofon", value: viewModel.microphonePermission)
-                    LabeledContent("Format", value: viewModel.lastAudioFormat)
-                    LabeledContent("Preprocessing", value: viewModel.lastPreprocessingMessage)
-                    LabeledContent("Taps", value: "\(viewModel.tapCount)")
-                }
-
                 Section("Analyse") {
                     LabeledContent(
                         "Chunklänge",
@@ -1724,55 +1814,69 @@ struct ListeningDebugView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if !viewModel.lastTopCandidates.isEmpty {
-                    Section("Top roh") {
-                        ForEach(viewModel.lastTopCandidates.prefix(5)) { detection in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(detection.germanName)
-                                    Text(detection.scientificName)
-                                        .font(.caption)
-                                        .italic()
-                                        .foregroundStyle(.secondary)
+                Section {
+                    HStack(spacing: 12) {
+                        Picker("Zeitraum", selection: $selectedRawWindow) {
+                            ForEach(RawDebugWindow.allCases) { window in
+                                Text(window.title).tag(window)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        Button {
+                            viewModel.resetRawAnalysisWindows()
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Letzte Treffer zurücksetzen")
+                    }
+
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        let summaries = viewModel.rawDetectionSummaries(
+                            inLast: selectedRawWindow.seconds,
+                            now: context.date
+                        )
+
+                        if summaries.isEmpty {
+                            Text("Noch keine Rohkandidaten im Zeitfenster.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            VStack(spacing: 0) {
+                                rawSummaryHeader
+
+                                ForEach(summaries) { summary in
+                                    RawSummaryRow(
+                                        summary: summary,
+                                        now: context.date
+                                    )
                                 }
-
-                                Spacer()
-
-                                Text(String(format: "%.1f%%", detection.confidence * 100))
-                                    .monospacedDigit()
                             }
                         }
                     }
+                } header: {
+                    Text("Letzte Treffer")
+                } footer: {
+                    Text("Aggregiert alle Rohkandidaten aus den Analysefenstern, unabhängig vom Session-Threshold.")
                 }
 
-                Section("Letzte 60 Sekunden") {
-                    if viewModel.recentDetectionEvents.isEmpty {
-                        Text("Noch keine Treffer im Zeitfenster.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            ForEach(viewModel.recentDetectionEvents) { event in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(event.germanName)
-                                        Text(event.scientificName)
-                                            .font(.caption)
-                                            .italic()
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    VStack(alignment: .trailing, spacing: 2) {
-                                        Text(String(format: "%.1f%%", event.confidence * 100))
-                                            .monospacedDigit()
-                                        Text(ageText(for: event, now: context.date))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
+                Section {
+                    DisclosureGroup(
+                        "Audio & Preprocessing",
+                        isExpanded: $isAudioDetailsExpanded
+                    ) {
+                        ProgressView(value: viewModel.audioBufferFill) {
+                            Text("Buffer")
+                        } currentValueLabel: {
+                            Text(String(format: "%.1f s", viewModel.audioBufferSeconds))
                         }
+                        .tint(Color(red: 0.20, green: 0.65, blue: 0.40))
+
+                        LabeledContent("Pegel", value: String(format: "%.3f", viewModel.audioLevel))
+                        LabeledContent("Mikrofon", value: viewModel.microphonePermission)
+                        LabeledContent("Format", value: viewModel.lastAudioFormat)
+                        LabeledContent("Preprocessing", value: viewModel.lastPreprocessingMessage)
+                        LabeledContent("Taps", value: "\(viewModel.tapCount)")
                     }
                 }
             }
@@ -1799,6 +1903,104 @@ struct ListeningDebugView: View {
     private func ageText(for event: RecentBirdDetection, now: Date) -> String {
         let age = max(0, Int(now.timeIntervalSince(event.detectedAt).rounded()))
         return age == 1 ? "vor 1 s" : "vor \(age) s"
+    }
+
+    private var rawSummaryHeader: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            Text("Art")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Max")
+                .frame(width: 48, alignment: .trailing)
+            Text("Ø")
+                .frame(width: 48, alignment: .trailing)
+            Text("x")
+                .frame(width: 28, alignment: .trailing)
+            Text("zuletzt")
+                .frame(width: 54, alignment: .trailing)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 6)
+    }
+}
+
+private enum RawDebugWindow: TimeInterval, CaseIterable, Identifiable {
+    case thirtySeconds = 30
+    case sixtySeconds = 60
+    case oneHundredTwentySeconds = 120
+
+    var id: TimeInterval { rawValue }
+    var seconds: TimeInterval { rawValue }
+    var title: String { "\(Int(rawValue)) s" }
+}
+
+private struct RawDetectionLine: View {
+    let detection: BirdDetection
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(detection.germanName)
+                Text(detection.scientificName)
+                    .font(.caption)
+                    .italic()
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(String(format: "%.1f%%", detection.confidence * 100))
+                .monospacedDigit()
+        }
+    }
+}
+
+private struct RawSummaryRow: View {
+    let summary: RawBirdDetectionSummary
+    let now: Date
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(summary.germanName)
+                    .lineLimit(2)
+                Text(summary.scientificName)
+                    .font(.caption)
+                    .italic()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(percentText(summary.maxConfidence))
+                .frame(width: 48, alignment: .trailing)
+            Text(percentText(summary.averageConfidence))
+                .frame(width: 48, alignment: .trailing)
+            Text("\(summary.hitCount)")
+                .frame(width: 28, alignment: .trailing)
+            Text(ageText)
+                .frame(width: 54, alignment: .trailing)
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline)
+        .monospacedDigit()
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+
+    private var ageText: String {
+        let age = max(0, Int(now.timeIntervalSince(summary.lastDetectedAt).rounded()))
+        if age < 60 {
+            return "\(age)s"
+        }
+
+        return "\(age / 60)m"
+    }
+
+    private func percentText(_ confidence: Float) -> String {
+        String(format: "%.1f", confidence * 100)
     }
 }
 
