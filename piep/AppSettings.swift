@@ -9,7 +9,9 @@ import Foundation
 
 enum AppSettings {
     nonisolated static let confidenceThresholdKey = "confidenceThreshold"
-    nonisolated static let defaultConfidenceThreshold = 0.35
+    nonisolated static let defaultConfidenceThreshold = 0.20
+    nonisolated private static let confidenceThresholdDefaultMigrationKey =
+        "confidenceThresholdDefaultMigrationTo020"
     nonisolated static let keepScreenOnWhileRecordingKey = "keepScreenOnWhileRecording"
     nonisolated static let defaultKeepScreenOnWhileRecording = true
     nonisolated static let birdImageMaximumCountKey = "birdImageMaximumCount"
@@ -34,7 +36,22 @@ enum AppSettings {
             return Float(defaultConfidenceThreshold)
         }
 
+        migrateConfidenceThresholdDefaultIfNeeded(defaults: defaults)
         return Float(defaults.double(forKey: confidenceThresholdKey))
+    }
+
+    nonisolated private static func migrateConfidenceThresholdDefaultIfNeeded(
+        defaults: UserDefaults
+    ) {
+        guard !defaults.bool(forKey: confidenceThresholdDefaultMigrationKey) else {
+            return
+        }
+
+        let storedThreshold = defaults.double(forKey: confidenceThresholdKey)
+        if abs(storedThreshold - 0.35) < 0.0001 {
+            defaults.set(defaultConfidenceThreshold, forKey: confidenceThresholdKey)
+        }
+        defaults.set(true, forKey: confidenceThresholdDefaultMigrationKey)
     }
 
     nonisolated static var keepScreenOnWhileRecording: Bool {
