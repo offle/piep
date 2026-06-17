@@ -14,6 +14,8 @@ enum AppSettings {
         "confidenceThresholdDefaultMigrationTo020"
     nonisolated static let keepScreenOnWhileRecordingKey = "keepScreenOnWhileRecording"
     nonisolated static let defaultKeepScreenOnWhileRecording = true
+    nonisolated static let iCloudSyncEnabledKey = "iCloudSyncEnabled"
+    nonisolated static let defaultICloudSyncEnabled = false
     nonisolated static let birdImageMaximumCountKey = "birdImageMaximumCount"
     nonisolated static let defaultBirdImageMaximumCount = 5
     nonisolated static let minimumBirdImageMaximumCount = 1
@@ -61,6 +63,15 @@ enum AppSettings {
         }
 
         return defaults.bool(forKey: keepScreenOnWhileRecordingKey)
+    }
+
+    nonisolated static var iCloudSyncEnabled: Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: iCloudSyncEnabledKey) != nil else {
+            return defaultICloudSyncEnabled
+        }
+
+        return defaults.bool(forKey: iCloudSyncEnabledKey)
     }
 
     nonisolated static var birdImageMaximumCount: Int {

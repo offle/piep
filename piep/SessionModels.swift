@@ -30,6 +30,11 @@ final class BirdSpecies {
     var id: UUID
     var scientificName: String
     var germanName: String
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var syncRecordName: String?
+    var lastSyncedAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \BirdSpeciesImage.species)
     var images: [BirdSpeciesImage]
@@ -41,12 +46,27 @@ final class BirdSpecies {
         self.id = UUID()
         self.scientificName = scientificName
         self.germanName = germanName
+        self.createdAt = Date()
+        self.updatedAt = Date()
+        self.deletedAt = nil
+        self.syncRecordName = nil
+        self.lastSyncedAt = nil
         self.images = []
         self.observations = []
     }
 
     var relevantObservations: [SessionSpeciesObservation] {
-        observations.filter { $0.status != .discarded && !$0.isExcludedHumanSound }
+        observations.filter {
+            !$0.isDeleted && $0.status != .discarded && !$0.isExcludedHumanSound
+        }
+    }
+
+    var isDeleted: Bool {
+        deletedAt != nil
+    }
+
+    func markUpdated(at date: Date = Date()) {
+        updatedAt = date
     }
 
     var firstObservedAt: Date? {
@@ -85,6 +105,8 @@ final class BirdSpeciesImage {
     var sourceURLString: String
     var fileName: String
     var createdAt: Date
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
     var species: BirdSpecies?
 
     init(
@@ -102,6 +124,8 @@ final class BirdSpeciesImage {
         self.sourceURLString = sourceURL.absoluteString
         self.fileName = fileName
         self.createdAt = createdAt
+        self.updatedAt = createdAt
+        self.deletedAt = nil
     }
 
     var sourceURL: URL? {
@@ -117,6 +141,11 @@ final class BirdSession {
     var latitude: Double?
     var longitude: Double?
     var locationName: String?
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var syncRecordName: String?
+    var lastSyncedAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \SessionSpeciesObservation.session)
     var observations: [SessionSpeciesObservation]
@@ -127,13 +156,23 @@ final class BirdSession {
         longitude: Double? = nil,
         locationName: String? = nil
     ) {
+        let createdAt = Date()
         self.id = UUID()
         self.startedAt = startedAt
         self.endedAt = nil
         self.latitude = latitude
         self.longitude = longitude
         self.locationName = locationName
+        self.createdAt = createdAt
+        self.updatedAt = createdAt
+        self.deletedAt = nil
+        self.syncRecordName = nil
+        self.lastSyncedAt = nil
         self.observations = []
+    }
+
+    var isDeleted: Bool {
+        deletedAt != nil
     }
 
     var duration: TimeInterval {
@@ -177,7 +216,9 @@ final class BirdSession {
     }
 
     var reviewedDetections: [SessionSpeciesObservation] {
-        observations.filter { $0.status != .discarded && !$0.isExcludedHumanSound }
+        observations.filter {
+            !$0.isDeleted && $0.status != .discarded && !$0.isExcludedHumanSound
+        }
     }
 
     var visibleDetections: [SessionSpeciesObservation] {
@@ -193,6 +234,18 @@ final class BirdSession {
         set { observations = newValue }
     }
 
+    func markUpdated(at date: Date = Date()) {
+        updatedAt = date
+    }
+
+    func markDeleted(at date: Date = Date()) {
+        deletedAt = date
+        updatedAt = date
+        for observation in observations {
+            observation.markDeleted(at: date)
+        }
+    }
+
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -204,11 +257,20 @@ final class BirdSession {
 @Model
 final class SessionSpeciesObservation {
     var id: UUID
+    var sessionID: UUID?
+    var speciesID: UUID?
+    var scientificNameSnapshot: String = ""
+    var germanNameSnapshot: String = ""
     var bestConfidence: Float
     var firstDetectedAt: Date
     var lastDetectedAt: Date
     var detectionCount: Int
     var statusRawValue: String
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var deletedAt: Date?
+    var syncRecordName: String?
+    var lastSyncedAt: Date?
     var session: BirdSession?
     var species: BirdSpecies?
 
@@ -219,20 +281,37 @@ final class SessionSpeciesObservation {
         status: DetectionReviewStatus = .confirmed
     ) {
         self.id = UUID()
+        self.sessionID = nil
+        self.speciesID = species.id
+        self.scientificNameSnapshot = species.scientificName
+        self.germanNameSnapshot = species.germanName
         self.bestConfidence = confidence
         self.firstDetectedAt = detectedAt
         self.lastDetectedAt = detectedAt
         self.detectionCount = 1
         self.statusRawValue = status.rawValue
+        self.createdAt = detectedAt
+        self.updatedAt = detectedAt
+        self.deletedAt = nil
+        self.syncRecordName = nil
+        self.lastSyncedAt = nil
         self.species = species
     }
 
     var scientificName: String {
-        species?.scientificName ?? "Unbekannte Art"
+        if !scientificNameSnapshot.isEmpty {
+            return scientificNameSnapshot
+        }
+
+        return species?.scientificName ?? "Unbekannte Art"
     }
 
     var germanName: String {
-        species?.germanName ?? "Unbekannt"
+        if !germanNameSnapshot.isEmpty {
+            return germanNameSnapshot
+        }
+
+        return species?.germanName ?? "Unbekannt"
     }
 
     var status: DetectionReviewStatus {
@@ -241,7 +320,12 @@ final class SessionSpeciesObservation {
         }
         set {
             statusRawValue = newValue.rawValue
+            markUpdated()
         }
+    }
+
+    var isDeleted: Bool {
+        deletedAt != nil || session?.isDeleted == true
     }
 
     var isExcludedHumanSound: Bool {
@@ -277,8 +361,94 @@ final class SessionSpeciesObservation {
         }
 
         lastDetectedAt = detectedAt
+        updatedAt = detectedAt
         return didIncrementCount
+    }
+
+    func attach(to session: BirdSession) {
+        self.session = session
+        self.sessionID = session.id
+    }
+
+    func markUpdated(at date: Date = Date()) {
+        updatedAt = date
+    }
+
+    func markDeleted(at date: Date = Date()) {
+        deletedAt = date
+        updatedAt = date
+        statusRawValue = DetectionReviewStatus.discarded.rawValue
     }
 }
 
 typealias SessionBirdDetection = SessionSpeciesObservation
+
+@MainActor
+enum LocalDataMigration {
+    private static let modelVersionKey = "localDataModelVersion"
+    private static let currentModelVersion = 2
+
+    static func runIfNeeded(modelContext: ModelContext) {
+        let defaults = UserDefaults.standard
+        guard defaults.integer(forKey: modelVersionKey) < currentModelVersion else {
+            return
+        }
+
+        migrateSessionDerivedIdentity(modelContext: modelContext)
+        defaults.set(currentModelVersion, forKey: modelVersionKey)
+    }
+
+    private static func migrateSessionDerivedIdentity(
+        modelContext: ModelContext
+    ) {
+        let sessionDescriptor = FetchDescriptor<BirdSession>()
+        let sessions = (try? modelContext.fetch(sessionDescriptor)) ?? []
+        var didChange = false
+
+        for session in sessions {
+            if session.createdAt > session.startedAt {
+                session.createdAt = session.startedAt
+                didChange = true
+            }
+            if session.updatedAt < session.startedAt {
+                session.updatedAt = session.endedAt ?? session.startedAt
+                didChange = true
+            }
+
+            for observation in session.observations {
+                if observation.sessionID != session.id {
+                    observation.sessionID = session.id
+                    didChange = true
+                }
+
+                if let species = observation.species {
+                    if observation.speciesID != species.id {
+                        observation.speciesID = species.id
+                        didChange = true
+                    }
+                    if observation.scientificNameSnapshot.isEmpty {
+                        observation.scientificNameSnapshot = species.scientificName
+                        didChange = true
+                    }
+                    if observation.germanNameSnapshot.isEmpty {
+                        observation.germanNameSnapshot = species.germanName
+                        didChange = true
+                    }
+                }
+
+                if observation.createdAt > observation.firstDetectedAt {
+                    observation.createdAt = observation.firstDetectedAt
+                    didChange = true
+                }
+                if observation.updatedAt < observation.lastDetectedAt {
+                    observation.updatedAt = observation.lastDetectedAt
+                    didChange = true
+                }
+            }
+        }
+
+        if didChange {
+            try? modelContext.save()
+        }
+    }
+}

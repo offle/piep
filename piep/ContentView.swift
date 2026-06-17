@@ -681,6 +681,7 @@ final class BirdListeningViewModel {
                 }
 
                 session.locationName = name
+                session.markUpdated()
                 try? self.activeModelContext?.save()
             }
         }
@@ -694,13 +695,14 @@ final class BirdListeningViewModel {
             let detectedAt = Date()
 
             if let existing = activeSession.detections.first(where: {
-                $0.scientificName == result.scientificName
+                !$0.isDeleted && $0.scientificName == result.scientificName
             }) {
                 let didIncrementCount = existing.merge(
                     confidence: result.confidence,
                     detectedAt: detectedAt,
                     countCooldown: 10
                 )
+                activeSession.markUpdated(at: detectedAt)
                 if didIncrementCount {
                     triggerDetectionFlash(for: result.scientificName)
                 }
@@ -714,8 +716,9 @@ final class BirdListeningViewModel {
                     confidence: result.confidence,
                     detectedAt: detectedAt
                 )
-                observation.session = activeSession
+                observation.attach(to: activeSession)
                 activeSession.observations.append(observation)
+                activeSession.markUpdated(at: detectedAt)
                 triggerDetectionFlash(for: result.scientificName)
             }
         }
@@ -767,7 +770,7 @@ final class BirdListeningViewModel {
         }
 
         for observation in demotedObservations {
-            modelContext.delete(observation)
+            observation.markDeleted()
         }
 
         detections = Self.mergedDetectionsByBestConfidence(
@@ -797,6 +800,7 @@ final class BirdListeningViewModel {
         if let existing = try? modelContext.fetch(descriptor).first {
             if existing.germanName != detection.germanName {
                 existing.germanName = detection.germanName
+                existing.markUpdated()
             }
             return existing
         }
@@ -915,6 +919,7 @@ private enum MainTab: Hashable {
 
 struct ContentView: View {
 
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel = BirdListeningViewModel()
     @State private var spokenBirdName: String?
     @State private var speechFeedbackTask: Task<Void, Never>?
@@ -970,6 +975,7 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            LocalDataMigration.runIfNeeded(modelContext: modelContext)
             viewModel.loadModel()
             updateIdleTimerState()
         }
@@ -1220,10 +1226,7 @@ struct GlobalRecordingHeader: View {
             return
         }
 
-        for detection in session.detections {
-            modelContext.delete(detection)
-        }
-        modelContext.delete(session)
+        session.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
 
@@ -1271,7 +1274,7 @@ private func cleanupOrphanedBirdSpecies(in modelContext: ModelContext) {
     }
 
     var didDeleteSpecies = false
-    for item in species where item.relevantObservations.isEmpty {
+    for item in species where item.relevantObservations.isEmpty && item.images.isEmpty {
         modelContext.delete(item)
         didDeleteSpecies = true
     }
@@ -1697,10 +1700,7 @@ struct ListeningView: View {
             return
         }
 
-        for detection in session.detections {
-            modelContext.delete(detection)
-        }
-        modelContext.delete(session)
+        session.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
 
@@ -2049,7 +2049,11 @@ private extension Array where Element == SessionBirdDetection {
 
 struct BirdMapView: View {
 
-    @Query(sort: \BirdSession.startedAt, order: .reverse)
+    @Query(
+        filter: #Predicate<BirdSession> { $0.deletedAt == nil },
+        sort: \BirdSession.startedAt,
+        order: .reverse
+    )
     private var sessions: [BirdSession]
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var visibleRegion: MKCoordinateRegion?
@@ -2541,6 +2545,8 @@ struct SettingsView: View {
 
     @AppStorage(AppSettings.keepScreenOnWhileRecordingKey)
     private var keepScreenOnWhileRecording = AppSettings.defaultKeepScreenOnWhileRecording
+    @AppStorage(AppSettings.iCloudSyncEnabledKey)
+    private var isICloudSyncEnabled = AppSettings.defaultICloudSyncEnabled
     @AppStorage(AppSettings.birdImageMaximumCountKey)
     private var birdImageMaximumCount = AppSettings.defaultBirdImageMaximumCount
     @State private var isConfirmingCacheDeletion = false
@@ -2590,6 +2596,14 @@ struct SettingsView: View {
                     }
                 } footer: {
                     Text("Solange eine Aufnahme aktiv ist, verhindert die App das automatische Sperren des Bildschirms.")
+                }
+
+                Section {
+                    Toggle(isOn: $isICloudSyncEnabled) {
+                        Label("iCloud Sync", systemImage: "icloud")
+                    }
+                } footer: {
+                    Text("Opt-in. Lokale Daten bleiben immer auf dem Gerät. Beim Aktivieren werden Sessions später zusätzlich mit iCloud abgeglichen; beim Deaktivieren wird nur der Sync gestoppt.")
                 }
 
                 Section {
@@ -3616,7 +3630,10 @@ struct ThresholdDefaultMarker: View {
 struct BirdOverviewView: View {
 
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \BirdSpecies.germanName)
+    @Query(
+        filter: #Predicate<BirdSpecies> { $0.deletedAt == nil },
+        sort: \BirdSpecies.germanName
+    )
     private var species: [BirdSpecies]
 
     var body: some View {
@@ -3730,7 +3747,10 @@ struct BirdSpeciesSessionListView: View {
 
     let scientificName: String
     let germanName: String
-    @Query(sort: \BirdSpecies.germanName)
+    @Query(
+        filter: #Predicate<BirdSpecies> { $0.deletedAt == nil },
+        sort: \BirdSpecies.germanName
+    )
     private var species: [BirdSpecies]
 
     var body: some View {
@@ -3912,7 +3932,11 @@ private struct MutableBirdSpeciesSummary {
 struct SessionsView: View {
 
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \BirdSession.startedAt, order: .reverse)
+    @Query(
+        filter: #Predicate<BirdSession> { $0.deletedAt == nil },
+        sort: \BirdSession.startedAt,
+        order: .reverse
+    )
     private var sessions: [BirdSession]
 
     var body: some View {
@@ -3950,7 +3974,11 @@ struct SessionsView: View {
 struct SessionDayView: View {
 
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \BirdSession.startedAt, order: .reverse)
+    @Query(
+        filter: #Predicate<BirdSession> { $0.deletedAt == nil },
+        sort: \BirdSession.startedAt,
+        order: .reverse
+    )
     private var sessions: [BirdSession]
     let date: Date
 
@@ -3990,10 +4018,7 @@ struct SessionDayView: View {
     }
 
     private func delete(_ session: BirdSession) {
-        for detection in session.detections {
-            modelContext.delete(detection)
-        }
-        modelContext.delete(session)
+        session.markDeleted()
     }
 
     private func delete(at offsets: IndexSet) {
@@ -4228,7 +4253,7 @@ struct SessionDetailView: View {
 
     private func deletePendingDetection() {
         guard let detection = detectionPendingDeletion else { return }
-        modelContext.delete(detection)
+        detection.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
         detectionPendingDeletion = nil
@@ -4404,7 +4429,7 @@ struct SessionDetectionCard: View {
             titleVisibility: .visible
         ) {
             Button("Löschen", role: .destructive) {
-                modelContext.delete(detection)
+                detection.markDeleted()
                 try? modelContext.save()
                 cleanupOrphanedBirdSpecies(in: modelContext)
             }
