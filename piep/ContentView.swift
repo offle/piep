@@ -2543,6 +2543,13 @@ struct BirdMapClusterPin: Identifiable {
 
 struct SettingsView: View {
 
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \BirdSession.startedAt, order: .reverse)
+    private var diagnosticSessions: [BirdSession]
+    @Query(sort: \SessionSpeciesObservation.firstDetectedAt, order: .reverse)
+    private var diagnosticObservations: [SessionSpeciesObservation]
+    @Query(sort: \BirdSpecies.germanName)
+    private var diagnosticSpecies: [BirdSpecies]
     @AppStorage(AppSettings.keepScreenOnWhileRecordingKey)
     private var keepScreenOnWhileRecording = AppSettings.defaultKeepScreenOnWhileRecording
     @AppStorage(AppSettings.iCloudSyncEnabledKey)
@@ -2602,8 +2609,15 @@ struct SettingsView: View {
                     Toggle(isOn: $isICloudSyncEnabled) {
                         Label("iCloud Sync", systemImage: "icloud")
                     }
+
+                    LabeledContent("Status", value: "Diagnosemodus")
+                    LabeledContent("Sessions lokal", value: "\(diagnosticSessions.count)")
+                    LabeledContent("Sichtbar", value: "\(visibleDiagnosticSessionCount)")
+                    LabeledContent("Ausgeblendet", value: "\(hiddenDiagnosticSessionCount)")
+                    LabeledContent("Beobachtungen", value: "\(visibleDiagnosticObservationCount) / \(diagnosticObservations.count)")
+                    LabeledContent("Arten", value: "\(activeDiagnosticSpeciesCount) / \(diagnosticSpecies.count)")
                 } footer: {
-                    Text("Opt-in. Lokale Daten bleiben immer auf dem Gerät. Beim Aktivieren werden Sessions später zusätzlich mit iCloud abgeglichen; beim Deaktivieren wird nur der Sync gestoppt.")
+                    Text("Diagnose: Der Schalter schreibt noch nicht in iCloud. Diese Werte zeigen, ob die lokalen SwiftData-Daten sichtbar sind.")
                 }
 
                 Section {
@@ -2679,6 +2693,22 @@ struct SettingsView: View {
                 Text("Die App lädt Vogelbilder danach erneut aus freien Quellen, sobald sie gebraucht werden.")
             }
         }
+    }
+
+    private var visibleDiagnosticSessionCount: Int {
+        diagnosticSessions.filter { !$0.isDeleted }.count
+    }
+
+    private var hiddenDiagnosticSessionCount: Int {
+        diagnosticSessions.count - visibleDiagnosticSessionCount
+    }
+
+    private var visibleDiagnosticObservationCount: Int {
+        diagnosticObservations.filter { !$0.isDeleted }.count
+    }
+
+    private var activeDiagnosticSpeciesCount: Int {
+        diagnosticSpecies.filter { !$0.isDeleted && !$0.relevantObservations.isEmpty }.count
     }
 
     private var appVersionText: String {
