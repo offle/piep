@@ -2584,7 +2584,7 @@ struct SettingsView: View {
                         LabeledContent("Autor", value: "Ole Wulff")
                         LabeledContent("Kontakt", value: "offlepoffle1@icloud.com")
                         LabeledContent("App-Lizenz", value: "MIT")
-                        Link(destination: URL(string: "https://offle.github.io/piep/")!) {
+                        Link(destination: URL(string: "https://piep.offle.de")!) {
                             Label("Kontakt und Support", systemImage: "link")
                         }
                     }

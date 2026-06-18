@@ -11,6 +11,7 @@ Pods/
 # Local build/deploy configuration
 xcbuild.conf
 xcbuild.local.conf
+IMPRINT.md
 
 # Local xcodebuild output
 build/
