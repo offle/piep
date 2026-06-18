@@ -2,8 +2,8 @@
 
 piep is an iOS app for detecting bird calls on device. It uses bundled
 BirdNET model files through TensorFlow Lite, stores listening sessions locally,
-and can download freely licensed bird photos from Wikimedia Commons for local
-cache use.
+can optionally sync session data through iCloud, and can download freely
+licensed bird photos from Wikimedia Commons for local cache use.
 
 The app is currently a personal, free, non-commercial project.
 
@@ -13,7 +13,8 @@ The app is currently a personal, free, non-commercial project.
 - Overlapping 3 second analysis windows, processed once per second
 - On-device BirdNET inference with location/date filtering
 - Local listening sessions with timestamp, duration, coordinates, and species
-- Bird overview with session counts per species
+- Optional iCloud Sync for sessions and detections
+- Bird overview with search, sorting, day counts, and session references
 - Map view with detected species by location
 - Wikimedia Commons image loading with local cache and license attribution
 - Configurable confidence threshold and expert audio profiles
@@ -27,6 +28,8 @@ piep is designed to keep user data local:
 - Audio is analyzed on device and is not uploaded by the app.
 - Location is used on device for BirdNET filtering and session coordinates.
 - Sessions and bird detections are stored locally on the device.
+- Optional iCloud Sync can synchronize sessions, detections, and coordinates
+  through Apple's CloudKit service in the user's private iCloud database.
 - Bird images are fetched from Wikimedia Commons and cached locally.
 
 See [PRIVACY.md](PRIVACY.md) for the full privacy policy draft.

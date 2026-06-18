@@ -16,7 +16,7 @@ Erkenne Vogelstimmen direkt auf deinem iPhone, speichere Funde in Sessions und e
 
 piep hilft dir dabei, Vogelstimmen in deiner Umgebung zu erkennen und deine Funde übersichtlich zu sammeln. Starte eine Hör-Session, lass die App lokal auf dem Gerät analysieren und sieh anschließend, welche Vogelarten erkannt wurden.
 
-Jede Session speichert Zeitpunkt, Dauer und Ort. Gefundene Arten werden in der Session angezeigt, können gelöscht werden und tauchen zusätzlich in einer Vogelübersicht auf. So siehst du mit der Zeit, welche Arten du wie oft gehört hast und in welchen Sessions sie vorkamen.
+Jede Session speichert Zeitpunkt, Dauer und Ort. Gefundene Arten werden in der Session angezeigt, können gelöscht werden und tauchen zusätzlich in einer Vogelübersicht auf. Dort kannst du suchen, sortieren und sehen, an wie vielen verschiedenen Tagen du eine Art gehört hast. Optional kannst du iCloud Sync aktivieren, damit Sessions und Funde über deine Geräte synchronisiert werden.
 
 Die Kartenansicht zeigt dir, wo du welche Vogelarten entdeckt hast. In der Vogelansicht findest du weitere Details, Session-Verweise und frei lizenzierte Bilder aus Wikimedia Commons, inklusive Lizenz, Quelle und Autor.
 
@@ -29,7 +29,8 @@ Wichtig: Die Erkennung läuft direkt auf deinem Gerät. Mikrofonaufnahmen werden
 - Vogelstimmen per Mikrofon erkennen
 - Lokale Analyse mit BirdNET-Modell
 - Sessions mit Zeit, Dauer, Ort und Artenliste
-- Vogelübersicht mit Fundhistorie
+- Vogelübersicht mit Suche, Sortierung und Fundhistorie
+- Optionaler iCloud Sync für Sessions und Funde
 - Kartenansicht für Fundorte
 - Frei lizenzierte Vogelbilder mit Attribution
 - Konfigurierbarer Genauigkeits-Schwellwert
@@ -43,8 +44,8 @@ Vögel,Vogelstimmen,BirdNET,Natur,Ornithologie,Birding,Vogelbeobachtung,Erkennun
 
 ## Datenschutz Kurztext
 
-piep analysiert Audio lokal auf dem Gerät. Die App betreibt keinen eigenen Server und lädt Mikrofonaufnahmen, Sessions oder Standortdaten nicht zu einem Entwicklerdienst hoch. Standortdaten werden lokal für regionale Erkennungsfilter, Sessions und die Karte genutzt. Vogelbilder werden bei Bedarf von Wikimedia Commons geladen und lokal gecacht.
+piep analysiert Audio lokal auf dem Gerät. Die App betreibt keinen eigenen Server und lädt Mikrofonaufnahmen nicht zu einem Entwicklerdienst hoch. Standortdaten werden lokal für regionale Erkennungsfilter, Sessions und die Karte genutzt. Wenn iCloud Sync aktiviert wird, synchronisiert piep Sessions, Funde und zugehörige Koordinaten über Apples CloudKit in der privaten iCloud-Datenbank des Nutzers. Vogelbilder werden bei Bedarf von Wikimedia Commons geladen und lokal gecacht.
 
 ## Review Notes
 
-piep ist kostenlos und nicht kommerziell. Die App nutzt gebündelte BirdNET-Modellressourcen zur lokalen Vogelstimmenerkennung. Mikrofonzugriff wird nur während aktiver Hör- oder Benchmark-Aufnahmen verwendet. Standortzugriff verbessert die regionale Erkennung und dient zur Anzeige von Fundorten. Vogelbilder werden von Wikimedia Commons geladen und in der App mit Lizenz, Quelle und Autor angezeigt.
+piep ist kostenlos und nicht kommerziell. Die App nutzt gebündelte BirdNET-Modellressourcen zur lokalen Vogelstimmenerkennung. Mikrofonzugriff wird nur während aktiver Hör- oder Benchmark-Aufnahmen verwendet. Standortzugriff verbessert die regionale Erkennung und dient zur Anzeige von Fundorten. iCloud Sync ist optional, standardmäßig deaktiviert und synchronisiert nur Sessions und Funde, keine Audiodaten. Vogelbilder werden von Wikimedia Commons geladen und in der App mit Lizenz, Quelle und Autor angezeigt.

@@ -3760,6 +3760,25 @@ struct ThresholdDefaultMarker: View {
 
 // MARK: - Bird Overview View
 
+private enum BirdOverviewSort: String, CaseIterable, Identifiable {
+    case name
+    case days
+    case recent
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .name:
+            return "Name"
+        case .days:
+            return "Tage"
+        case .recent:
+            return "Zuletzt"
+        }
+    }
+}
+
 struct BirdOverviewView: View {
 
     @Environment(\.modelContext) private var modelContext
@@ -3768,6 +3787,9 @@ struct BirdOverviewView: View {
         sort: \BirdSpecies.germanName
     )
     private var species: [BirdSpecies]
+    @State private var searchText = ""
+    @State private var sortMode: BirdOverviewSort = .days
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -3779,14 +3801,31 @@ struct BirdOverviewView: View {
                         description: Text("Gefundene Vögel erscheinen hier nach Sessions gruppiert.")
                     )
                 } else {
-                    List(activeSpecies) { species in
-                        NavigationLink {
-                            BirdSpeciesDetailView(species: species)
-                        } label: {
-                            BirdSpeciesSummaryRow(species: species)
+                    List {
+                        Section {
+                            searchField
+                            sortControl
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+                        if visibleSpecies.isEmpty {
+                            ContentUnavailableView(
+                                "Keine Treffer",
+                                systemImage: "magnifyingglass",
+                                description: Text("Passe die Suche an.")
+                            )
+                        } else {
+                            ForEach(visibleSpecies) { species in
+                                NavigationLink {
+                                    BirdSpeciesDetailView(species: species)
+                                } label: {
+                                    BirdSpeciesSummaryRow(species: species)
+                                }
+                            }
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .scrollDismissesKeyboard(.immediately)
                 }
             }
             .navigationTitle("")
@@ -3797,8 +3836,85 @@ struct BirdOverviewView: View {
         }
     }
 
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Vogel suchen", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($isSearchFocused)
+                .onSubmit {
+                    isSearchFocused = false
+                }
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .font(.body)
+        .padding(.vertical, 2)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Fertig") {
+                    isSearchFocused = false
+                }
+            }
+        }
+    }
+
+    private var sortControl: some View {
+        Picker("Sortierung", selection: $sortMode) {
+            ForEach(BirdOverviewSort.allCases) { sortMode in
+                Text(sortMode.title).tag(sortMode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .font(.system(size: 12, weight: .semibold, design: .rounded))
+    }
+
     private var activeSpecies: [BirdSpecies] {
         species.filter { !$0.relevantObservations.isEmpty }
+    }
+
+    private var visibleSpecies: [BirdSpecies] {
+        let filtered = activeSpecies.filter { species in
+            guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return true
+            }
+
+            return species.germanName.localizedCaseInsensitiveContains(searchText)
+                || species.scientificName.localizedCaseInsensitiveContains(searchText)
+        }
+
+        return filtered.sorted { lhs, rhs in
+            switch sortMode {
+            case .name:
+                return lhs.germanName.localizedCaseInsensitiveCompare(rhs.germanName) == .orderedAscending
+            case .days:
+                let lhsDays = BirdSpeciesSessionStats.uniqueDayCount(for: lhs)
+                let rhsDays = BirdSpeciesSessionStats.uniqueDayCount(for: rhs)
+                if lhsDays != rhsDays {
+                    return lhsDays > rhsDays
+                }
+                return lhs.germanName.localizedCaseInsensitiveCompare(rhs.germanName) == .orderedAscending
+            case .recent:
+                let lhsDate = lhs.lastObservedAt ?? .distantPast
+                let rhsDate = rhs.lastObservedAt ?? .distantPast
+                if lhsDate != rhsDate {
+                    return lhsDate > rhsDate
+                }
+                return lhs.germanName.localizedCaseInsensitiveCompare(rhs.germanName) == .orderedAscending
+            }
+        }
     }
 }
 
@@ -3838,11 +3954,14 @@ struct BirdSpeciesDetailView: View {
             }
 
             Section("Sessions") {
-                ForEach(matchingSessions) { session in
+                ForEach(sessionDays) { day in
                     NavigationLink {
-                        SessionDetailView(session: session)
+                        BirdSpeciesSessionDayView(
+                            species: species,
+                            day: day
+                        )
                     } label: {
-                        BirdSpeciesSessionRow(session: session, species: species)
+                        BirdSpeciesSessionDayRow(day: day)
                     }
                 }
             }
@@ -3869,6 +3988,10 @@ struct BirdSpeciesDetailView: View {
             .sorted {
                 $0.startedAt > $1.startedAt
             }
+    }
+
+    private var sessionDays: [BirdSpeciesSessionDaySummary] {
+        BirdSpeciesSessionDaySummary.make(from: matchingSessions)
     }
 
     private var speciesHistoryText: String {
@@ -3908,49 +4031,178 @@ struct BirdSpeciesSummaryRow: View {
     let species: BirdSpecies
 
     var body: some View {
-        HStack(spacing: 14) {
-            BirdThumbnail(scientificName: species.scientificName, size: 52)
+        HStack(alignment: .top, spacing: 12) {
+            BirdThumbnail(scientificName: species.scientificName, size: 48)
+                .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(species.germanName)
-                        .font(.headline)
-                        .lineLimit(1)
-                    BirdSpeakButton(
-                        germanName: species.germanName,
-                        scientificName: species.scientificName
-                    )
-                    .accessibilityLabel("\(species.germanName) vorlesen")
-                    if species.isNewlyDiscovered {
-                        NewSpeciesBadge()
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        speciesName
+                        speechAndBadge
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        speciesName
+                        speechAndBadge
                     }
                 }
+
                 Text(species.scientificName)
                     .font(.caption)
                     .italic()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text(BirdSpeciesHistoryFormatter.listText(for: species))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(BirdSpeciesHistoryFormatter.firstSeenListText(for: species))
+                    Text(BirdSpeciesHistoryFormatter.lastSeenListText(for: species))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 3) {
-                Text("\(sessionCount)")
+                Text("\(dayCount)")
                     .font(.title3.weight(.bold).monospacedDigit())
-                Text(sessionCount == 1 ? "Session" : "Sessions")
+                Text(dayCount == 1 ? "Tag" : "Tage")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Text("\(sessionCount) \(sessionCount == 1 ? "Session" : "Sessions")")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
+            .frame(width: 62, alignment: .trailing)
         }
         .padding(.vertical, 4)
     }
 
+    private var speciesName: some View {
+        Text(species.germanName)
+            .font(.headline)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var speechAndBadge: some View {
+        HStack(spacing: 6) {
+            BirdSpeakButton(
+                germanName: species.germanName,
+                scientificName: species.scientificName
+            )
+            .accessibilityLabel("\(species.germanName) vorlesen")
+            if species.isNewlyDiscovered {
+                NewSpeciesBadge()
+            }
+        }
+    }
+
     private var sessionCount: Int {
         species.uniqueSessionCount
+    }
+
+    private var dayCount: Int {
+        BirdSpeciesSessionStats.uniqueDayCount(for: species)
+    }
+}
+
+private enum BirdSpeciesSessionStats {
+
+    static func uniqueDayCount(for species: BirdSpecies) -> Int {
+        let calendar = Calendar.current
+        let days = species.relevantObservations.compactMap { observation -> Date? in
+            if let session = observation.session {
+                return calendar.startOfDay(for: session.startedAt)
+            }
+            return calendar.startOfDay(for: observation.firstDetectedAt)
+        }
+        return Set(days).count
+    }
+}
+
+struct BirdSpeciesSessionDaySummary: Identifiable {
+
+    let id: Date
+    let date: Date
+    let sessions: [BirdSession]
+
+    var title: String {
+        Self.titleFormatter.string(from: date)
+    }
+
+    var sessionCount: Int {
+        sessions.count
+    }
+
+    static func make(from sessions: [BirdSession]) -> [BirdSpeciesSessionDaySummary] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: sessions) {
+            calendar.startOfDay(for: $0.startedAt)
+        }
+
+        return grouped
+            .map { day, sessions in
+                BirdSpeciesSessionDaySummary(
+                    id: day,
+                    date: day,
+                    sessions: sessions.sorted { $0.startedAt > $1.startedAt }
+                )
+            }
+            .sorted { $0.date > $1.date }
+    }
+
+    private static let titleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .none
+        return formatter
+    }()
+}
+
+struct BirdSpeciesSessionDayRow: View {
+
+    let day: BirdSpeciesSessionDaySummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(day.title)
+                .font(.headline)
+                .lineLimit(2)
+
+            Label("\(day.sessionCount)", systemImage: "list.bullet.rectangle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct BirdSpeciesSessionDayView: View {
+
+    let species: BirdSpecies
+    let day: BirdSpeciesSessionDaySummary
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("Sessions", value: "\(day.sessionCount)")
+                LabeledContent("Art", value: species.germanName)
+            }
+
+            Section("Sessions") {
+                ForEach(day.sessions) { session in
+                    NavigationLink {
+                        SessionDetailView(session: session)
+                    } label: {
+                        BirdSpeciesSessionRow(session: session, species: species)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(day.title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -4814,6 +5066,15 @@ enum BirdSpeciesHistoryFormatter {
     static func listText(for species: BirdSpecies, now: Date = Date()) -> String {
         let firstSeen = species.firstObservedAt.map(dateText) ?? "unbekannt"
         return "Erstfund: \(firstSeen) · Zuletzt: \(daysSinceLastSeenText(for: species, now: now))"
+    }
+
+    static func firstSeenListText(for species: BirdSpecies) -> String {
+        let firstSeen = species.firstObservedAt.map(dateText) ?? "unbekannt"
+        return "Erstfund: \(firstSeen)"
+    }
+
+    static func lastSeenListText(for species: BirdSpecies, now: Date = Date()) -> String {
+        "Zuletzt: \(daysSinceLastSeenText(for: species, now: now))"
     }
 
     static func detailText(for species: BirdSpecies, now: Date = Date()) -> String {
