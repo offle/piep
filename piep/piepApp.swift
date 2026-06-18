@@ -10,15 +10,34 @@ import SwiftData
 
 @main
 struct piepApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
-        .modelContainer(for: [
+
+    private let modelContainer: ModelContainer = {
+        let schema = Schema([
             BirdSpecies.self,
             BirdSpeciesImage.self,
             BirdSession.self,
             SessionSpeciesObservation.self,
         ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            groupContainer: .none,
+            cloudKitDatabase: .none
+        )
+
+        do {
+            return try ModelContainer(
+                for: schema,
+                configurations: [configuration]
+            )
+        } catch {
+            fatalError("Could not create local SwiftData container: \(error)")
+        }
+    }()
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+        .modelContainer(modelContainer)
     }
 }

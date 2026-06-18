@@ -57,7 +57,7 @@ Install on a local device:
 cp xcbuild.example.conf xcbuild.conf
 # edit xcbuild.conf with your local device ID
 ./build.sh
-./push.sh
+./deploy.sh
 ```
 
 `xcbuild.conf` is intentionally ignored because it contains local device and
