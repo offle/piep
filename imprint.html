@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>piep Support</title>
-  <meta name="description" content="Kontakt und Support fuer die iOS-App piep.">
+  <title>piep Impressum</title>
+  <meta name="description" content="Impressum fuer die iOS-App piep und die Supportseite piep.offle.de.">
   <style>
     :root {
       --bg: #f4f1e8;
@@ -36,7 +36,7 @@
     }
 
     .card {
-      width: min(720px, 100%);
+      width: min(760px, 100%);
       background: var(--card);
       backdrop-filter: blur(12px);
       border: 1px solid var(--line);
@@ -68,12 +68,9 @@
       font-weight: 700;
     }
 
-    .lead {
-      margin: 16px 0 0;
-      max-width: 46ch;
-      font-size: 1.08rem;
-      line-height: 1.6;
-      color: var(--muted);
+    h2 {
+      margin: 0;
+      font: 700 1.1rem/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     .content {
@@ -82,7 +79,7 @@
       gap: 18px;
     }
 
-    .support-box {
+    .box {
       display: grid;
       gap: 10px;
       padding: 20px;
@@ -99,41 +96,11 @@
       color: var(--muted);
     }
 
-    .mail-link,
-    .repo-link,
-    .button-link {
-      color: var(--accent-strong);
-      text-decoration: none;
-      font-weight: 700;
-      word-break: break-word;
-    }
-
-    .mail-link {
-      font-size: clamp(1.2rem, 3vw, 1.7rem);
-    }
-
-    .repo-link {
-      font-size: 1rem;
-    }
-
-    .button-link {
-      display: inline-flex;
-      width: fit-content;
-      align-items: center;
-      justify-content: center;
-      min-height: 44px;
-      padding: 0 18px;
-      border-radius: 999px;
-      color: #fff;
-      background: var(--accent);
-      box-shadow: 0 10px 28px rgba(47, 111, 89, 0.18);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-
-    .mail-link:hover,
-    .repo-link:hover,
-    .button-link:hover {
-      text-decoration: underline;
+    .imprint-data {
+      margin: 0;
+      white-space: pre-wrap;
+      font: 1.08rem/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
     }
 
     .note {
@@ -143,8 +110,22 @@
       font-size: 0.98rem;
     }
 
+    a {
+      color: var(--accent-strong);
+      font-weight: 700;
+      text-decoration: none;
+      word-break: break-word;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
     .footer {
       padding: 0 32px 28px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
       color: var(--muted);
       font-size: 0.92rem;
     }
@@ -162,62 +143,64 @@
 <body>
   <main class="card">
     <section class="hero">
-      <p class="eyebrow">piep Support</p>
-      <h1>Kontakt und Hilfe</h1>
-      <p class="lead">
-        Fragen, Feedback oder Probleme mit der App piep kannst du direkt per
-        E-Mail senden.
-      </p>
+      <p class="eyebrow">piep</p>
+      <h1>Impressum</h1>
     </section>
 
     <section class="content">
-      <div class="support-box">
-        <p class="label">E-Mail</p>
-        <a class="mail-link" href="mailto:offlepoffle1@icloud.com">
-          offlepoffle1@icloud.com
-        </a>
+      <div class="box">
+        <p class="label">Angaben gemaess § 5 DDG</p>
+        <pre id="provider" class="imprint-data">Impressumsdaten werden geladen...</pre>
+      </div>
+
+      <div class="box">
+        <p class="label">Kontakt</p>
         <p class="note">
-          Bitte beschreibe kurz dein Geraet, deine iOS-Version und was genau
-          passiert ist. Das hilft bei der Fehlersuche.
+          E-Mail: <a href="mailto:offlepoffle1@icloud.com">offlepoffle1@icloud.com</a>
         </p>
       </div>
 
-      <div class="support-box">
-        <p class="label">Projektseite</p>
-        <a class="repo-link" href="https://github.com/offle/piep">
-          github.com/offle/piep
-        </a>
-        <p class="note">
-          Auf der Projektseite findest du zusaetzlich Datenschutzinformationen
-          und weitere Hinweise zur App.
-        </p>
-      </div>
-
-      <div class="support-box">
-        <p class="label">Datenschutz</p>
-        <a class="repo-link" href="https://github.com/offle/piep/blob/main/PRIVACY.md">
-          Datenschutzinformationen
-        </a>
-        <p class="note">
-          piep analysiert Audio lokal. Optionaler iCloud Sync synchronisiert
-          Sessions und Funde ueber Apples iCloud, wenn du ihn in der App
-          aktivierst.
-        </p>
-      </div>
-
-      <div class="support-box">
-        <p class="label">Rechtliches</p>
-        <a class="button-link" href="imprint.html">Impressum anzeigen</a>
-        <p class="note">
-          Das Impressum enthaelt die gesetzlich erforderlichen Angaben zum
-          Anbieter dieser Supportseite.
-        </p>
+      <div class="box">
+        <p class="label">Verantwortlich fuer den Inhalt nach § 18 Abs. 2 MStV</p>
+        <pre id="responsible" class="imprint-data">Impressumsdaten werden geladen...</pre>
       </div>
     </section>
 
     <div class="footer">
-      piep ist ein kostenloses, nicht-kommerzielles Projekt.
+      <a href="index.html">Zurueck zu Kontakt und Support</a>
     </div>
   </main>
+
+  <script>
+    async function loadImprint() {
+      const targets = [
+        document.getElementById("provider"),
+        document.getElementById("responsible")
+      ];
+
+      try {
+        const response = await fetch("IMPRINT.md", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("IMPRINT.md konnte nicht geladen werden.");
+        }
+
+        const text = (await response.text()).trim();
+        if (!text) {
+          throw new Error("IMPRINT.md ist leer.");
+        }
+
+        for (const target of targets) {
+          target.textContent = text;
+        }
+      } catch (error) {
+        for (const target of targets) {
+          target.textContent =
+            "Impressumsdaten sind derzeit nicht verfuegbar. Bitte kontaktiere offlepoffle1@icloud.com.";
+        }
+      }
+    }
+
+    loadImprint();
+  </script>
 </body>
 </html>
