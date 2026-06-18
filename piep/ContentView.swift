@@ -303,7 +303,6 @@ final class BirdListeningViewModel {
         activeSession?.endedAt = Date()
         displayedSession = activeSession ?? displayedSession
         try? modelContext.save()
-        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
         activeSession = nil
         activeModelContext = nil
         BirdNameSpeaker.isRecording = false
@@ -978,7 +977,6 @@ struct ContentView: View {
         .onAppear {
             LocalDataMigration.runIfNeeded(modelContext: modelContext)
             viewModel.loadModel()
-            PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
             updateIdleTimerState()
         }
         .onChange(of: viewModel.isListening) { _, _ in
@@ -1231,7 +1229,6 @@ struct GlobalRecordingHeader: View {
         session.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
-        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
 
         viewModel.displayedSession = nil
         viewModel.detections = []
@@ -2546,8 +2543,6 @@ struct BirdMapClusterPin: Identifiable {
 
 struct SettingsView: View {
 
-    @Environment(\.modelContext) private var modelContext
-    @State private var cloudSyncManager = PiepCloudSyncManager.shared
     @AppStorage(AppSettings.keepScreenOnWhileRecordingKey)
     private var keepScreenOnWhileRecording = AppSettings.defaultKeepScreenOnWhileRecording
     @AppStorage(AppSettings.iCloudSyncEnabledKey)
@@ -2607,37 +2602,8 @@ struct SettingsView: View {
                     Toggle(isOn: $isICloudSyncEnabled) {
                         Label("iCloud Sync", systemImage: "icloud")
                     }
-
-                    LabeledContent("Status", value: cloudSyncManager.statusText)
-
-                    if let lastErrorMessage = cloudSyncManager.lastErrorMessage {
-                        Text(lastErrorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-
-                    Button {
-                        Task {
-                            await cloudSyncManager.sync(modelContext: modelContext)
-                        }
-                    } label: {
-                        if cloudSyncManager.isSyncing {
-                            Label("Synchronisiert...", systemImage: "arrow.triangle.2.circlepath")
-                        } else {
-                            Label("Jetzt synchronisieren", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                    }
-                    .disabled(!isICloudSyncEnabled || cloudSyncManager.isSyncing)
                 } footer: {
                     Text("Opt-in. Lokale Daten bleiben immer auf dem Gerät. Beim Aktivieren werden Sessions später zusätzlich mit iCloud abgeglichen; beim Deaktivieren wird nur der Sync gestoppt.")
-                }
-                .onChange(of: isICloudSyncEnabled) { _, isEnabled in
-                    if isEnabled {
-                        cloudSyncManager.syncIfEnabled(modelContext: modelContext)
-                    }
-                }
-                .task {
-                    cloudSyncManager.syncIfEnabled(modelContext: modelContext)
                 }
 
                 Section {
@@ -4035,7 +4001,6 @@ struct SessionDayView: View {
                             delete(session)
                             try? modelContext.save()
                             cleanupOrphanedBirdSpecies(in: modelContext)
-                            PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
                         } label: {
                             Label("Löschen", systemImage: "trash")
                         }
@@ -4063,7 +4028,6 @@ struct SessionDayView: View {
         }
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
-        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
     }
 
     private var day: SessionDaySummary {
@@ -4292,7 +4256,6 @@ struct SessionDetailView: View {
         detection.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
-        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
         detectionPendingDeletion = nil
     }
 
@@ -4469,7 +4432,6 @@ struct SessionDetectionCard: View {
                 detection.markDeleted()
                 try? modelContext.save()
                 cleanupOrphanedBirdSpecies(in: modelContext)
-                PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
             }
             Button("Abbrechen", role: .cancel) { }
         } message: {
