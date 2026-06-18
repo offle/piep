@@ -303,6 +303,7 @@ final class BirdListeningViewModel {
         activeSession?.endedAt = Date()
         displayedSession = activeSession ?? displayedSession
         try? modelContext.save()
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
         activeSession = nil
         activeModelContext = nil
         BirdNameSpeaker.isRecording = false
@@ -977,6 +978,7 @@ struct ContentView: View {
         .onAppear {
             LocalDataMigration.runIfNeeded(modelContext: modelContext)
             viewModel.loadModel()
+            PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
             updateIdleTimerState()
         }
         .onChange(of: viewModel.isListening) { _, _ in
@@ -1229,6 +1231,7 @@ struct GlobalRecordingHeader: View {
         session.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
 
         viewModel.displayedSession = nil
         viewModel.detections = []
@@ -1703,6 +1706,7 @@ struct ListeningView: View {
         session.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
 
         viewModel.displayedSession = nil
         viewModel.detections = []
@@ -2544,6 +2548,7 @@ struct BirdMapClusterPin: Identifiable {
 struct SettingsView: View {
 
     @Environment(\.modelContext) private var modelContext
+    @State private var cloudSyncManager = PiepCloudSyncManager.shared
     @Query(sort: \BirdSession.startedAt, order: .reverse)
     private var diagnosticSessions: [BirdSession]
     @Query(sort: \SessionSpeciesObservation.firstDetectedAt, order: .reverse)
@@ -2610,14 +2615,61 @@ struct SettingsView: View {
                         Label("iCloud Sync", systemImage: "icloud")
                     }
 
-                    LabeledContent("Status", value: "Diagnosemodus")
-                    LabeledContent("Sessions lokal", value: "\(diagnosticSessions.count)")
-                    LabeledContent("Sichtbar", value: "\(visibleDiagnosticSessionCount)")
-                    LabeledContent("Ausgeblendet", value: "\(hiddenDiagnosticSessionCount)")
-                    LabeledContent("Beobachtungen", value: "\(visibleDiagnosticObservationCount) / \(diagnosticObservations.count)")
-                    LabeledContent("Arten", value: "\(activeDiagnosticSpeciesCount) / \(diagnosticSpecies.count)")
+                    LabeledContent("Status", value: cloudSyncManager.statusText)
+
+                    if let lastErrorMessage = cloudSyncManager.lastErrorMessage {
+                        Text(lastErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    Button {
+                        Task {
+                            await cloudSyncManager.sync(modelContext: modelContext)
+                        }
+                    } label: {
+                        if cloudSyncManager.isSyncing {
+                            Label("Synchronisiert...", systemImage: "arrow.triangle.2.circlepath")
+                        } else {
+                            Label("Jetzt synchronisieren", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                    }
+                    .disabled(!isICloudSyncEnabled || cloudSyncManager.isSyncing)
+
+                    DisclosureGroup {
+                        LabeledContent("iCloud Account", value: cloudSyncManager.accountText)
+
+                        CloudSyncComparisonHeader()
+                        CloudSyncComparisonRow(
+                            title: "Sessions",
+                            localValue: "\(diagnosticSessions.count)",
+                            cloudValue: remoteSessionCountText
+                        )
+                        CloudSyncComparisonRow(
+                            title: "Beobachtungen",
+                            localValue: "\(visibleDiagnosticObservationCount) / \(diagnosticObservations.count)",
+                            cloudValue: remoteObservationCountText
+                        )
+                        CloudSyncComparisonRow(
+                            title: "Arten",
+                            localValue: "\(activeDiagnosticSpeciesCount) / \(diagnosticSpecies.count)",
+                            cloudValue: remoteSpeciesCountText
+                        )
+                        LabeledContent("Lokale Sessions sichtbar", value: "\(visibleDiagnosticSessionCount)")
+                        LabeledContent("Lokale Sessions ausgeblendet", value: "\(hiddenDiagnosticSessionCount)")
+                    } label: {
+                        Label("Details", systemImage: "info.circle")
+                    }
                 } footer: {
-                    Text("Diagnose: Der Schalter schreibt noch nicht in iCloud. Diese Werte zeigen, ob die lokalen SwiftData-Daten sichtbar sind.")
+                    Text("Optional: Nutze iCloud, damit deine Daten bei Apple gesichert und auf all deinen Geräten synchronisiert werden.")
+                }
+                .onChange(of: isICloudSyncEnabled) { _, isEnabled in
+                    if isEnabled {
+                        cloudSyncManager.syncIfEnabled(modelContext: modelContext)
+                    }
+                }
+                .task {
+                    cloudSyncManager.syncIfEnabled(modelContext: modelContext)
                 }
 
                 Section {
@@ -2711,6 +2763,18 @@ struct SettingsView: View {
         diagnosticSpecies.filter { !$0.isDeleted && !$0.relevantObservations.isEmpty }.count
     }
 
+    private var remoteSessionCountText: String {
+        cloudSyncManager.remoteSessionCount.map(String.init) ?? "-"
+    }
+
+    private var remoteObservationCountText: String {
+        cloudSyncManager.remoteObservationCount.map(String.init) ?? "-"
+    }
+
+    private var remoteSpeciesCountText: String {
+        cloudSyncManager.remoteSpeciesCount.map(String.init) ?? "-"
+    }
+
     private var appVersionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "1.0"
@@ -2722,6 +2786,45 @@ struct SettingsView: View {
     private var buildTimestampText: String {
         (Bundle.main.object(forInfoDictionaryKey: "PiepBuildTimestamp") as? String)
             ?? "Build-Zeit unbekannt"
+    }
+}
+
+private struct CloudSyncComparisonHeader: View {
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("Daten")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Lokal")
+                .frame(width: 78, alignment: .trailing)
+            Text("iCloud")
+                .frame(width: 78, alignment: .trailing)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.top, 4)
+    }
+}
+
+private struct CloudSyncComparisonRow: View {
+
+    let title: String
+    let localValue: String
+    let cloudValue: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(localValue)
+                .font(.body.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .trailing)
+            Text(cloudValue)
+                .font(.body.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .trailing)
+        }
     }
 }
 
@@ -4031,6 +4134,7 @@ struct SessionDayView: View {
                             delete(session)
                             try? modelContext.save()
                             cleanupOrphanedBirdSpecies(in: modelContext)
+                            PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
                         } label: {
                             Label("Löschen", systemImage: "trash")
                         }
@@ -4058,6 +4162,7 @@ struct SessionDayView: View {
         }
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
     }
 
     private var day: SessionDaySummary {
@@ -4286,6 +4391,7 @@ struct SessionDetailView: View {
         detection.markDeleted()
         try? modelContext.save()
         cleanupOrphanedBirdSpecies(in: modelContext)
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
         detectionPendingDeletion = nil
     }
 
@@ -4462,6 +4568,7 @@ struct SessionDetectionCard: View {
                 detection.markDeleted()
                 try? modelContext.save()
                 cleanupOrphanedBirdSpecies(in: modelContext)
+                PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
             }
             Button("Abbrechen", role: .cancel) { }
         } message: {
