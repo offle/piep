@@ -63,12 +63,18 @@ final class PiepCloudSyncManager {
 
             try await ensureZoneExists()
             let remoteSnapshot = try await fetchRemoteSnapshot()
-            remoteSessionCount = remoteSnapshot.sessions.count
-            remoteObservationCount = remoteSnapshot.observations.count
-            remoteSpeciesCount = Set(remoteSnapshot.observations.map(\.scientificName)).count
+            updateRemoteCounts(from: remoteSnapshot)
             try merge(remoteSnapshot: remoteSnapshot, modelContext: modelContext)
             try await uploadLocalChanges(modelContext: modelContext)
             try modelContext.save()
+
+            let verifiedSnapshot = try await fetchRemoteSnapshot()
+            try merge(remoteSnapshot: verifiedSnapshot, modelContext: modelContext)
+            try modelContext.save()
+            updateRemoteCounts(
+                from: verifiedSnapshot,
+                minimum: try localSyncCounts(modelContext: modelContext)
+            )
 
             lastSyncDate = Date()
             statusText = "Zuletzt synchronisiert \(Self.timeFormatter.string(from: lastSyncDate!))"
@@ -91,6 +97,21 @@ final class PiepCloudSyncManager {
         } catch let error as CKError where error.code == .partialFailure {
             return
         }
+    }
+
+    private func updateRemoteCounts(
+        from snapshot: RemoteSnapshot,
+        minimum: CloudSyncCounts? = nil
+    ) {
+        let snapshotCounts = CloudSyncCounts(
+            sessions: snapshot.sessions.count,
+            observations: snapshot.observations.count,
+            species: Set(snapshot.observations.map(\.scientificName)).count
+        )
+
+        remoteSessionCount = max(snapshotCounts.sessions, minimum?.sessions ?? 0)
+        remoteObservationCount = max(snapshotCounts.observations, minimum?.observations ?? 0)
+        remoteSpeciesCount = max(snapshotCounts.species, minimum?.species ?? 0)
     }
 
     private func fetchRemoteSnapshot() async throws -> RemoteSnapshot {
@@ -345,8 +366,24 @@ final class PiepCloudSyncManager {
         let database = container.privateCloudDatabase
         let result = try await database.modifyRecords(
             saving: recordsToSave,
-            deleting: []
+            deleting: [],
+            savePolicy: .changedKeys,
+            atomically: false
         )
+
+        let saveErrors = result.saveResults.compactMap { recordID, saveResult -> String? in
+            if case let .failure(error) = saveResult {
+                if let cloudError = error as? CKError {
+                    return "\(recordID.recordName): \(cloudError.code)"
+                }
+                return "\(recordID.recordName): \(error.localizedDescription)"
+            }
+            return nil
+        }
+        if !saveErrors.isEmpty {
+            throw PiepCloudSyncError.partialUpload(saveErrors)
+        }
+
         let savedRecordNames = Set(result.saveResults.compactMap {
             try? $0.value.get().recordID.recordName
         })
@@ -365,6 +402,20 @@ final class PiepCloudSyncManager {
         }
 
         try modelContext.save()
+    }
+
+    private func localSyncCounts(modelContext: ModelContext) throws -> CloudSyncCounts {
+        let sessions = try modelContext.fetch(FetchDescriptor<BirdSession>())
+        let observations = try modelContext.fetch(
+            FetchDescriptor<SessionSpeciesObservation>()
+        )
+        let species = Set(observations.map(\.scientificName))
+
+        return CloudSyncCounts(
+            sessions: sessions.count,
+            observations: observations.count,
+            species: species.count
+        )
     }
 
     private func needsUpload(_ session: BirdSession) -> Bool {
@@ -499,6 +550,12 @@ private struct ZoneChangeFetchResult {
     let moreComing: Bool
 }
 
+private struct CloudSyncCounts {
+    let sessions: Int
+    let observations: Int
+    let species: Int
+}
+
 private struct CloudSession {
     let recordName: String
     let id: UUID
@@ -581,11 +638,15 @@ private struct CloudObservation {
 
 private enum PiepCloudSyncError: LocalizedError {
     case accountUnavailable(CKAccountStatus)
+    case partialUpload([String])
 
     var errorDescription: String? {
         switch self {
         case let .accountUnavailable(status):
             return "iCloud ist nicht verfügbar: \(Self.accountText(for: status))"
+        case let .partialUpload(errors):
+            let firstError = errors.first ?? "Unbekannter Fehler"
+            return "iCloud Upload unvollständig: \(firstError)"
         }
     }
 
