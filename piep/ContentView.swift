@@ -146,6 +146,7 @@ final class BirdListeningViewModel {
 
     // MARK: Published State
     var isListening = false
+    var isDebugAnalyzing = false
     var detections: [BirdDetection] = []
     var isProcessing = false
     var audioLevel: Float = 0
@@ -224,6 +225,7 @@ final class BirdListeningViewModel {
     }
 
     private func startListening(modelContext: ModelContext) {
+        guard !isDebugAnalyzing else { return }
         guard classifier != nil else {
             errorMessage = "Modell wird noch geladen…"
             return
@@ -309,6 +311,54 @@ final class BirdListeningViewModel {
         BirdNameSpeaker.isRecording = false
         BirdNameSpeaker.pauseRecordingForSpeech = nil
         BirdNameSpeaker.resumeRecordingAfterSpeech = nil
+    }
+
+    func startDebugAnalysis() {
+        guard !isListening, !isDebugAnalyzing else { return }
+        guard classifier != nil else {
+            errorMessage = "Modell wird noch geladen…"
+            return
+        }
+
+        updateMicrophonePermission()
+        locationManager.requestLocation()
+        hasAppliedLocationFilter = false
+
+        do {
+            try startAudioInput()
+            isDebugAnalyzing = true
+            activeModelContext = nil
+            detections = []
+            lastTopCandidates = []
+            lowConfidenceDetections = []
+            recentDetectionEvents = []
+            rawAnalysisWindows = []
+            recentAnalysisDurations = []
+            audioBufferSamples = 0
+            tapCount = 0
+            analysisCount = 0
+            skippedAnalysisCount = 0
+            lastAnalysisMessage = "Sammle 3 Sekunden Audio"
+            lastPreprocessingMessage = "Sammle Audio"
+            errorMessage = nil
+            scheduleAnalysisTimer()
+        } catch {
+            errorMessage = "Mikrofon-Fehler: \(error.localizedDescription)"
+        }
+    }
+
+    func stopDebugAnalysis() {
+        guard isDebugAnalyzing else { return }
+        analysisTimer?.invalidate()
+        analysisTimer = nil
+        audioInput.stop()
+        isDebugAnalyzing = false
+        isProcessing = false
+        audioLevel = 0
+        audioBufferSamples = 0
+        hasAppliedLocationFilter = false
+        lastAnalysisMessage = "Debug-Analyse gestoppt"
+        lastPreprocessingMessage = "Gestoppt"
     }
 
     private func startAudioInput() throws {
@@ -424,6 +474,7 @@ final class BirdListeningViewModel {
             let analysisStartedAt = Date()
             var preprocessingMessages: [String] = []
             var allCandidates: [BirdDetection] = []
+            var candidatesByProfile: [String: [BirdDetection]] = [:]
             var analyzedProfileCount = 0
 
             for profile in profiles {
@@ -440,13 +491,16 @@ final class BirdListeningViewModel {
                 }
 
                 analyzedProfileCount += 1
-                allCandidates.append(contentsOf: classifier.classify(
+                let profileCandidates = classifier.classify(
                     audioSamples: preprocessingResult.samples,
                     minimumConfidence: 0.001
-                ))
+                )
+                candidatesByProfile[profile.label] = profileCandidates
+                allCandidates.append(contentsOf: profileCandidates)
             }
 
             let preprocessingMessage = preprocessingMessages.joined(separator: " | ")
+            let recordedCandidatesByProfile = candidatesByProfile
 
             guard analyzedProfileCount > 0 else {
                 await MainActor.run {
@@ -454,7 +508,10 @@ final class BirdListeningViewModel {
                     self.skippedAnalysisCount += 1
                     self.lastTopCandidates = []
                     self.detections = []
-                    self.recordRawAnalysisWindow([])
+                    self.recordRawAnalysisWindow(
+                        [],
+                        candidatesByProfile: recordedCandidatesByProfile
+                    )
                     self.lastPreprocessingMessage = preprocessingMessage
                     self.lastAnalysisMessage =
                         "Analyse \(self.analysisCount): kein relevantes Band-Signal"
@@ -477,7 +534,10 @@ final class BirdListeningViewModel {
                 guard let self else { return }
                 self.recordAnalysisDuration(analysisDuration)
                 self.lastTopCandidates = candidates
-                self.recordRawAnalysisWindow(candidates)
+                self.recordRawAnalysisWindow(
+                    candidates,
+                    candidatesByProfile: recordedCandidatesByProfile
+                )
                 self.detections = results
                 self.recordLowConfidenceDetections(
                     lowConfidenceResults,
@@ -561,13 +621,17 @@ final class BirdListeningViewModel {
         }
     }
 
-    private func recordRawAnalysisWindow(_ detections: [BirdDetection]) {
+    private func recordRawAnalysisWindow(
+        _ detections: [BirdDetection],
+        candidatesByProfile: [String: [BirdDetection]]
+    ) {
         let now = Date()
         rawAnalysisWindows.append(
             RawAnalysisWindow(
                 analysisNumber: analysisCount,
                 detectedAt: now,
-                detections: detections
+                detections: detections,
+                candidatesByProfile: candidatesByProfile
             )
         )
 
@@ -596,6 +660,21 @@ final class BirdListeningViewModel {
                 summary.add(detection: detection, detectedAt: window.detectedAt)
                 summaries[detection.scientificName] = summary
             }
+
+            for (profileLabel, detections) in window.candidatesByProfile {
+                for detection in detections {
+                    var summary = summaries[detection.scientificName]
+                        ?? MutableRawBirdDetectionSummary(
+                            scientificName: detection.scientificName,
+                            germanName: detection.germanName
+                        )
+                    summary.add(
+                        detection: detection,
+                        profileLabel: profileLabel
+                    )
+                    summaries[detection.scientificName] = summary
+                }
+            }
         }
 
         return summaries.values
@@ -612,6 +691,33 @@ final class BirdListeningViewModel {
                 return $0.germanName.localizedStandardCompare($1.germanName)
                     == .orderedAscending
             }
+    }
+
+    func strongestRawDetection(
+        forProfile profileLabel: String,
+        inLast seconds: TimeInterval,
+        now: Date = Date()
+    ) -> RawProfileTopDetection? {
+        let cutoff = now.addingTimeInterval(-seconds)
+        var strongest: RawProfileTopDetection?
+
+        for window in rawAnalysisWindows where window.detectedAt >= cutoff {
+            for detection in window.candidatesByProfile[profileLabel] ?? [] {
+                guard strongest == nil
+                    || detection.confidence > strongest!.confidence
+                else {
+                    continue
+                }
+
+                strongest = RawProfileTopDetection(
+                    scientificName: detection.scientificName,
+                    germanName: detection.germanName,
+                    confidence: detection.confidence
+                )
+            }
+        }
+
+        return strongest
     }
 
     private func recordRecentDetectionEvents(_ detections: [BirdDetection]) {
@@ -842,6 +948,7 @@ struct RawAnalysisWindow: Identifiable {
     let analysisNumber: Int
     let detectedAt: Date
     let detections: [BirdDetection]
+    let candidatesByProfile: [String: [BirdDetection]]
 }
 
 struct RawBirdDetectionSummary: Identifiable {
@@ -852,6 +959,13 @@ struct RawBirdDetectionSummary: Identifiable {
     let averageConfidence: Float
     let hitCount: Int
     let lastDetectedAt: Date
+    let maxConfidenceByProfile: [String: Float]
+}
+
+struct RawProfileTopDetection {
+    let scientificName: String
+    let germanName: String
+    let confidence: Float
 }
 
 private struct MutableRawBirdDetectionSummary {
@@ -861,12 +975,20 @@ private struct MutableRawBirdDetectionSummary {
     var confidenceSum: Float = 0
     var hitCount = 0
     var lastDetectedAt = Date.distantPast
+    var maxConfidenceByProfile: [String: Float] = [:]
 
     mutating func add(detection: BirdDetection, detectedAt: Date) {
         maxConfidence = max(maxConfidence, detection.confidence)
         confidenceSum += detection.confidence
         hitCount += 1
         lastDetectedAt = max(lastDetectedAt, detectedAt)
+    }
+
+    mutating func add(detection: BirdDetection, profileLabel: String) {
+        maxConfidenceByProfile[profileLabel] = max(
+            maxConfidenceByProfile[profileLabel] ?? 0,
+            detection.confidence
+        )
     }
 
     var summary: RawBirdDetectionSummary {
@@ -878,7 +1000,8 @@ private struct MutableRawBirdDetectionSummary {
                 ? confidenceSum / Float(hitCount)
                 : 0,
             hitCount: hitCount,
-            lastDetectedAt: lastDetectedAt
+            lastDetectedAt: lastDetectedAt,
+            maxConfidenceByProfile: maxConfidenceByProfile
         )
     }
 }
@@ -921,6 +1044,9 @@ private enum MainTab: Hashable {
 struct ContentView: View {
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @Query(filter: #Predicate<BirdSpecies> { $0.deletedAt == nil })
+    private var cachedSpecies: [BirdSpecies]
     @State private var viewModel = BirdListeningViewModel()
     @State private var spokenBirdName: String?
     @State private var speechFeedbackTask: Task<Void, Never>?
@@ -981,11 +1107,29 @@ struct ContentView: View {
             PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
             updateIdleTimerState()
         }
+        .task(id: cachedSpecies.map(\.scientificName).sorted()) {
+            await BirdImageStore.shared.prefetchMissingImages(
+                for: cachedSpecies
+                    .filter { !$0.relevantObservations.isEmpty }
+                    .map(\.scientificName)
+            )
+        }
         .onChange(of: viewModel.isListening) { _, _ in
             updateIdleTimerState()
         }
         .onChange(of: keepScreenOnWhileRecording) { _, _ in
             updateIdleTimerState()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
+            Task {
+                await BirdImageStore.shared.prefetchMissingImages(
+                    for: cachedSpecies
+                        .filter { !$0.relevantObservations.isEmpty }
+                        .map(\.scientificName)
+                )
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -1270,7 +1414,7 @@ struct SpeechFeedbackBanner: View {
 }
 
 @MainActor
-private func cleanupOrphanedBirdSpecies(in modelContext: ModelContext) {
+func cleanupOrphanedBirdSpecies(in modelContext: ModelContext) {
     let descriptor = FetchDescriptor<BirdSpecies>()
     guard let species = try? modelContext.fetch(descriptor) else {
         return
@@ -1580,6 +1724,10 @@ struct ListeningView: View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 if let session = viewModel.displayedSession {
+                    if !viewModel.isListening, session.endedAt != nil {
+                        SessionCompletionSummaryCard(session: session)
+                    }
+
                     if !session.reviewedDetections.isEmpty {
                         sortControl
                     }
@@ -1725,6 +1873,69 @@ struct ListeningView: View {
     }()
 }
 
+struct SessionCompletionSummaryCard: View {
+    let session: BirdSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Session abgeschlossen", systemImage: "checkmark.circle.fill")
+                    .font(.headline)
+                Spacer()
+                Text(durationText)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 16) {
+                summaryValue("\(session.reviewedDetections.count)", label: "Arten")
+                summaryValue("\(newSpeciesCount)", label: "neu")
+                summaryValue("\(totalDetections)", label: "Treffer")
+            }
+
+            Label(session.locationDescription, systemImage: "location")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            if let strongestDetection {
+                Text("Stärkster Treffer: \(strongestDetection.germanName) \(Int(strongestDetection.bestConfidence * 100)) %")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func summaryValue(_ value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .font(.title3.bold().monospacedDigit())
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var newSpeciesCount: Int {
+        session.reviewedDetections.filter(\.isFirstObservationForSpecies).count
+    }
+
+    private var totalDetections: Int {
+        session.reviewedDetections.reduce(0) { $0 + $1.detectionCount }
+    }
+
+    private var strongestDetection: SessionSpeciesObservation? {
+        session.reviewedDetections.max { $0.bestConfidence < $1.bestConfidence }
+    }
+
+    private var durationText: String {
+        SessionDetailView.durationFormatter.string(from: session.duration) ?? "0:00"
+    }
+}
+
 struct DeleteDisplayedSessionPopover: View {
 
     let onCancel: () -> Void
@@ -1770,6 +1981,38 @@ struct ListeningDebugView: View {
         NavigationStack {
             List {
                 Section {
+                    Button {
+                        if viewModel.isDebugAnalyzing {
+                            viewModel.stopDebugAnalysis()
+                        } else {
+                            viewModel.startDebugAnalysis()
+                        }
+                    } label: {
+                        Label(
+                            viewModel.isDebugAnalyzing
+                                ? "Debug-Analyse stoppen"
+                                : "Ohne Session analysieren",
+                            systemImage: viewModel.isDebugAnalyzing
+                                ? "stop.fill"
+                                : "waveform.badge.magnifyingglass"
+                        )
+                    }
+                    .disabled(viewModel.isListening || !viewModel.isModelLoaded)
+
+                    if viewModel.isListening {
+                        Text("Während einer laufenden Session ist die separate Debug-Analyse nicht verfügbar.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if viewModel.isDebugAnalyzing {
+                        Label("Mikrofonanalyse aktiv, es wird keine Session gespeichert.", systemImage: "waveform")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Startet die normale Live-Analyse ausschließlich für dieses Debug-Fenster. Beim Schließen wird sie automatisch beendet.")
+                }
+
+                Section {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Label("Threshold", systemImage: "scope")
@@ -1793,7 +2036,7 @@ struct ListeningDebugView: View {
                     }
                     .padding(.vertical, 4)
                 } footer: {
-                    Text("Änderungen gelten sofort für die laufende Analyse. Bereits erkannte Kandidaten über dem neuen Wert werden in die aktive Session übernommen.")
+                    Text("Änderungen gelten sofort. Bei einer laufenden Session werden passende Kandidaten übernommen; die separate Debug-Analyse speichert nichts.")
                 }
                 .onChange(of: confidenceThreshold) { _, _ in
                     viewModel.reconcileDetectionsForCurrentThreshold(modelContext: modelContext)
@@ -1816,6 +2059,27 @@ struct ListeningDebugView: View {
                     )
                     Text(viewModel.lastAnalysisMessage)
                         .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        ForEach(1...AppSettings.audioProfileCount, id: \.self) { profileIndex in
+                            DebugAudioProfileRow(
+                                profileIndex: profileIndex,
+                                strongestDetection: viewModel.strongestRawDetection(
+                                    forProfile: AppSettings.audioProfileLabel(
+                                        profileIndex: profileIndex
+                                    ),
+                                    inLast: selectedRawWindow.seconds,
+                                    now: context.date
+                                )
+                            )
+                        }
+                    }
+                } header: {
+                    Text("Profile")
+                } footer: {
+                    Text("Die Profilspalten in den letzten Treffern zeigen jeweils die höchste Roh-Konfidenz im gewählten Zeitraum.")
                 }
 
                 Section {
@@ -1893,6 +2157,9 @@ struct ListeningDebugView: View {
                     }
                 }
             }
+            .onDisappear {
+                viewModel.stopDebugAnalysis()
+            }
         }
     }
 
@@ -1913,18 +2180,84 @@ struct ListeningDebugView: View {
         HStack(alignment: .bottom, spacing: 8) {
             Text("Art")
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("Max")
-                .frame(width: 48, alignment: .trailing)
-            Text("Ø")
-                .frame(width: 48, alignment: .trailing)
-            Text("x")
-                .frame(width: 28, alignment: .trailing)
-            Text("zuletzt")
-                .frame(width: 54, alignment: .trailing)
+            ForEach(1...AppSettings.audioProfileCount, id: \.self) { profileIndex in
+                Text("P\(profileIndex)")
+                    .frame(width: 38, alignment: .trailing)
+            }
+            Text("Alter")
+                .frame(width: 40, alignment: .trailing)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
         .padding(.vertical, 6)
+    }
+}
+
+private struct DebugAudioProfileRow: View {
+    let profileIndex: Int
+    let strongestDetection: RawProfileTopDetection?
+
+    private var isEnabled: Bool {
+        AppSettings.isAudioProfileEnabled(profileIndex: profileIndex)
+    }
+
+    private var settings: AudioPreprocessingSettings {
+        AppSettings.audioPreprocessingSettings(profileIndex: profileIndex)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isEnabled ? "waveform" : "waveform.slash")
+                .foregroundStyle(isEnabled ? Color.accentColor : .secondary)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("P\(profileIndex) · \(frequencyRange)")
+                    .font(.subheadline.weight(.semibold))
+                Text(detailDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(confidenceDescription)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isEnabled ? Color.accentColor : .secondary)
+                .monospacedDigit()
+        }
+    }
+
+    private var frequencyRange: String {
+        guard settings.isBandpassEnabled else { return "ungefiltert" }
+        return "\(frequency(settings.highpassCutoffHz))–\(frequency(settings.lowpassCutoffHz)) Hz"
+    }
+
+    private var gateDescription: String {
+        guard settings.isBandEnergyGateEnabled else { return "Gate aus" }
+        return String(format: "Gate ab RMS %.4f", settings.minimumBandRMS)
+    }
+
+    private var detailDescription: String {
+        guard isEnabled else { return gateDescription }
+        guard let strongestDetection else {
+            return "\(gateDescription) · noch kein Treffer"
+        }
+        return "\(gateDescription) · \(strongestDetection.germanName)"
+    }
+
+    private var confidenceDescription: String {
+        guard isEnabled else { return "aus" }
+        guard let strongestDetection else { return "–" }
+        return String(format: "%.1f%%", strongestDetection.confidence * 100)
+    }
+
+    private func frequency(_ value: Float) -> String {
+        if value >= 1_000 {
+            return String(format: "%.1fk", value / 1_000)
+                .replacingOccurrences(of: ".0k", with: "k")
+        }
+        return String(format: "%.0f", value)
     }
 }
 
@@ -1976,14 +2309,15 @@ private struct RawSummaryRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(percentText(summary.maxConfidence))
-                .frame(width: 48, alignment: .trailing)
-            Text(percentText(summary.averageConfidence))
-                .frame(width: 48, alignment: .trailing)
-            Text("\(summary.hitCount)")
-                .frame(width: 28, alignment: .trailing)
+            ForEach(1...AppSettings.audioProfileCount, id: \.self) { profileIndex in
+                Text(profileConfidenceText(profileIndex))
+                    .frame(width: 38, alignment: .trailing)
+                    .foregroundStyle(profileConfidenceColor(profileIndex))
+                    .minimumScaleFactor(0.75)
+                    .lineLimit(1)
+            }
             Text(ageText)
-                .frame(width: 54, alignment: .trailing)
+                .frame(width: 40, alignment: .trailing)
                 .foregroundStyle(.secondary)
         }
         .font(.subheadline)
@@ -2003,8 +2337,27 @@ private struct RawSummaryRow: View {
         return "\(age / 60)m"
     }
 
-    private func percentText(_ confidence: Float) -> String {
-        String(format: "%.1f", confidence * 100)
+    private func profileConfidenceText(_ profileIndex: Int) -> String {
+        guard AppSettings.isAudioProfileEnabled(profileIndex: profileIndex) else {
+            return "aus"
+        }
+        guard let confidence = summary.maxConfidenceByProfile[
+            AppSettings.audioProfileLabel(profileIndex: profileIndex)
+        ] else {
+            return "–"
+        }
+        return String(format: "%.0f%%", confidence * 100)
+    }
+
+    private func profileConfidenceColor(_ profileIndex: Int) -> Color {
+        guard AppSettings.isAudioProfileEnabled(profileIndex: profileIndex),
+              let confidence = summary.maxConfidenceByProfile[
+                AppSettings.audioProfileLabel(profileIndex: profileIndex)
+              ]
+        else {
+            return .secondary
+        }
+        return confidence >= AppSettings.confidenceThreshold ? .primary : .secondary
     }
 }
 
@@ -2562,6 +2915,11 @@ struct SettingsView: View {
     @AppStorage(AppSettings.birdImageMaximumCountKey)
     private var birdImageMaximumCount = AppSettings.defaultBirdImageMaximumCount
     @State private var isConfirmingCacheDeletion = false
+    @State private var isExportingBackup = false
+    @State private var isImportingBackup = false
+    @State private var backupDocument = PiepArchiveDocument()
+    @State private var backupMessage: String?
+    @State private var exportKind: PiepExportKind = .backup
 
     var body: some View {
         NavigationStack {
@@ -2642,7 +3000,7 @@ struct SettingsView: View {
                         CloudSyncComparisonHeader()
                         CloudSyncComparisonRow(
                             title: "Sessions",
-                            localValue: "\(diagnosticSessions.count)",
+                            localValue: "\(visibleDiagnosticSessionCount) / \(diagnosticSessions.count)",
                             cloudValue: remoteSessionCountText
                         )
                         CloudSyncComparisonRow(
@@ -2655,6 +3013,15 @@ struct SettingsView: View {
                             localValue: "\(activeDiagnosticSpeciesCount) / \(diagnosticSpecies.count)",
                             cloudValue: remoteSpeciesCountText
                         )
+                        LabeledContent(
+                            "Upload offen",
+                            value: "\(cloudSyncManager.pendingSessionUploadCount) Sessions / \(cloudSyncManager.pendingObservationUploadCount) Beobachtungen"
+                        )
+                        if let lastUploadIssue = cloudSyncManager.lastUploadIssue {
+                            Text(lastUploadIssue)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                         LabeledContent("Lokale Sessions sichtbar", value: "\(visibleDiagnosticSessionCount)")
                         LabeledContent("Lokale Sessions ausgeblendet", value: "\(hiddenDiagnosticSessionCount)")
                     } label: {
@@ -2670,6 +3037,32 @@ struct SettingsView: View {
                 }
                 .task {
                     cloudSyncManager.syncIfEnabled(modelContext: modelContext)
+                }
+
+                Section {
+                    Button {
+                        exportData(as: .backup)
+                    } label: {
+                        Label("Backup exportieren", systemImage: "square.and.arrow.up")
+                    }
+
+                    Menu {
+                        Button("CSV-Tabelle") { exportData(as: .csv) }
+                        Button("GeoJSON-Karte") { exportData(as: .geoJSON) }
+                        Button("GPX-Fundorte") { exportData(as: .gpx) }
+                    } label: {
+                        Label("Daten weitergeben", systemImage: "tablecells")
+                    }
+
+                    Button {
+                        isImportingBackup = true
+                    } label: {
+                        Label("Backup wiederherstellen", systemImage: "square.and.arrow.down")
+                    }
+                } header: {
+                    Text("Daten und Backup")
+                } footer: {
+                    Text("Das JSON-Backup enthält alle Sessions, Fundorte, Treffer und Löschungen. Bilder und Einstellungen bleiben lokal und werden nicht exportiert.")
                 }
 
                 Section {
@@ -2744,6 +3137,70 @@ struct SettingsView: View {
             } message: {
                 Text("Die App lädt Vogelbilder danach erneut aus freien Quellen, sobald sie gebraucht werden.")
             }
+            .fileExporter(
+                isPresented: $isExportingBackup,
+                document: backupDocument,
+                contentType: exportKind.contentType,
+                defaultFilename: "piep-\(Self.backupDateFormatter.string(from: Date()))-\(exportKind.fileSuffix)"
+            ) { result in
+                if case let .failure(error) = result {
+                    backupMessage = "Export fehlgeschlagen: \(error.localizedDescription)"
+                }
+            }
+            .fileImporter(
+                isPresented: $isImportingBackup,
+                allowedContentTypes: [.json],
+                allowsMultipleSelection: false
+            ) { result in
+                importBackup(result)
+            }
+            .alert("Daten und Backup", isPresented: Binding(
+                get: { backupMessage != nil },
+                set: { if !$0 { backupMessage = nil } }
+            )) {
+                Button("OK") { backupMessage = nil }
+            } message: {
+                Text(backupMessage ?? "")
+            }
+        }
+    }
+
+    private func exportData(as kind: PiepExportKind) {
+        do {
+            let archive = try SessionDataArchiveService.makeArchive(modelContext: modelContext)
+            let data: Data
+            switch kind {
+            case .backup:
+                data = try SessionDataArchiveService.encode(archive)
+            case .csv:
+                data = SessionDataArchiveService.csvData(from: archive)
+            case .geoJSON:
+                data = try SessionDataArchiveService.geoJSONData(from: archive)
+            case .gpx:
+                data = SessionDataArchiveService.gpxData(from: archive)
+            }
+            exportKind = kind
+            backupDocument = PiepArchiveDocument(data: data)
+            isExportingBackup = true
+        } catch {
+            backupMessage = "Export fehlgeschlagen: \(error.localizedDescription)"
+        }
+    }
+
+    private func importBackup(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            let archive = try SessionDataArchiveService.decode(Data(contentsOf: url))
+            let imported = try SessionDataArchiveService.importArchive(
+                archive,
+                modelContext: modelContext
+            )
+            PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
+            backupMessage = "Backup eingelesen: \(imported.sessions) neue Sessions und \(imported.observations) neue Beobachtungen. Vorhandene Datensätze wurden anhand ihrer UUID aktualisiert."
+        } catch {
+            backupMessage = "Import fehlgeschlagen: \(error.localizedDescription)"
         }
     }
 
@@ -2764,15 +3221,30 @@ struct SettingsView: View {
     }
 
     private var remoteSessionCountText: String {
-        cloudSyncManager.remoteSessionCount.map(String.init) ?? "-"
+        remoteCountText(
+            visible: cloudSyncManager.remoteVisibleSessionCount,
+            total: cloudSyncManager.remoteSessionCount
+        )
     }
 
     private var remoteObservationCountText: String {
-        cloudSyncManager.remoteObservationCount.map(String.init) ?? "-"
+        remoteCountText(
+            visible: cloudSyncManager.remoteVisibleObservationCount,
+            total: cloudSyncManager.remoteObservationCount
+        )
     }
 
     private var remoteSpeciesCountText: String {
-        cloudSyncManager.remoteSpeciesCount.map(String.init) ?? "-"
+        remoteCountText(
+            visible: cloudSyncManager.remoteVisibleSpeciesCount,
+            total: cloudSyncManager.remoteSpeciesCount
+        )
+    }
+
+    private func remoteCountText(visible: Int?, total: Int?) -> String {
+        guard let total else { return "-" }
+        guard let visible else { return String(total) }
+        return "\(visible) / \(total)"
     }
 
     private var appVersionText: String {
@@ -2787,6 +3259,12 @@ struct SettingsView: View {
         (Bundle.main.object(forInfoDictionaryKey: "PiepBuildTimestamp") as? String)
             ?? "Build-Zeit unbekannt"
     }
+
+    private static let backupDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 private struct CloudSyncComparisonHeader: View {
@@ -3963,6 +4441,14 @@ struct BirdSpeciesDetailView: View {
                     } label: {
                         BirdSpeciesSessionDayRow(day: day)
                     }
+                }
+            }
+
+            Section {
+                NavigationLink {
+                    BirdSpeciesStatisticsView(species: species)
+                } label: {
+                    Label("Statistik und Fundkalender", systemImage: "chart.bar.xaxis")
                 }
             }
 

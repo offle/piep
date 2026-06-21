@@ -18,10 +18,16 @@ final class PiepCloudSyncManager {
     private(set) var statusText = "Nicht synchronisiert"
     private(set) var accountText = "unbekannt"
     private(set) var remoteSessionCount: Int?
+    private(set) var remoteVisibleSessionCount: Int?
     private(set) var remoteObservationCount: Int?
+    private(set) var remoteVisibleObservationCount: Int?
     private(set) var remoteSpeciesCount: Int?
+    private(set) var remoteVisibleSpeciesCount: Int?
     private(set) var lastSyncDate: Date?
     private(set) var lastErrorMessage: String?
+    private(set) var pendingSessionUploadCount = 0
+    private(set) var pendingObservationUploadCount = 0
+    private(set) var lastUploadIssue: String?
     private(set) var isSyncing = false
 
     private let container = CKContainer(identifier: "iCloud.org.offlepoffle1.piep")
@@ -52,6 +58,7 @@ final class PiepCloudSyncManager {
 
         isSyncing = true
         lastErrorMessage = nil
+        lastUploadIssue = nil
         statusText = "Synchronisiere..."
 
         do {
@@ -104,14 +111,39 @@ final class PiepCloudSyncManager {
         minimum: CloudSyncCounts? = nil
     ) {
         let snapshotCounts = CloudSyncCounts(
+            visibleSessions: snapshot.sessions.filter { $0.deletedAt == nil }.count,
             sessions: snapshot.sessions.count,
+            visibleObservations: visibleObservations(in: snapshot).count,
             observations: snapshot.observations.count,
+            visibleSpecies: Set(visibleObservations(in: snapshot).map(\.scientificName)).count,
             species: Set(snapshot.observations.map(\.scientificName)).count
         )
 
+        remoteVisibleSessionCount = max(snapshotCounts.visibleSessions, minimum?.visibleSessions ?? 0)
         remoteSessionCount = max(snapshotCounts.sessions, minimum?.sessions ?? 0)
+        remoteVisibleObservationCount = max(
+            snapshotCounts.visibleObservations,
+            minimum?.visibleObservations ?? 0
+        )
         remoteObservationCount = max(snapshotCounts.observations, minimum?.observations ?? 0)
+        remoteVisibleSpeciesCount = max(snapshotCounts.visibleSpecies, minimum?.visibleSpecies ?? 0)
         remoteSpeciesCount = max(snapshotCounts.species, minimum?.species ?? 0)
+    }
+
+    private func visibleObservations(in snapshot: RemoteSnapshot) -> [CloudObservation] {
+        let visibleSessionIDs = Set(
+            snapshot.sessions
+                .filter { $0.deletedAt == nil }
+                .map(\.id)
+        )
+
+        return snapshot.observations.filter {
+            $0.deletedAt == nil
+                && $0.status != .discarded
+                && visibleSessionIDs.contains($0.sessionID)
+                && !$0.scientificName.hasPrefix("Human ")
+                && !$0.germanName.hasPrefix("Mensch ")
+        }
     }
 
     private func fetchRemoteSnapshot() async throws -> RemoteSnapshot {
@@ -293,7 +325,10 @@ final class PiepCloudSyncManager {
     }
 
     private func merge(_ remote: CloudSession, into local: BirdSession) {
-        guard remote.updatedAt >= local.updatedAt else { return }
+        guard PiepConflictResolver.remoteWins(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt
+        ) else { return }
         apply(remote, to: local)
     }
 
@@ -305,7 +340,10 @@ final class PiepCloudSyncManager {
         local.locationName = remote.locationName
         local.createdAt = min(local.createdAt, remote.createdAt)
         local.updatedAt = remote.updatedAt
-        local.deletedAt = newest(local.deletedAt, remote.deletedAt)
+        local.deletedAt = PiepConflictResolver.mergedDeletion(
+            local: local.deletedAt,
+            remote: remote.deletedAt
+        )
         local.syncRecordName = remote.recordName
         local.lastSyncedAt = Date()
     }
@@ -345,7 +383,10 @@ final class PiepCloudSyncManager {
         local.statusRawValue = remote.status.rawValue
         local.createdAt = min(local.createdAt, remote.createdAt)
         local.updatedAt = remote.updatedAt
-        local.deletedAt = newest(local.deletedAt, remote.deletedAt)
+        local.deletedAt = PiepConflictResolver.mergedDeletion(
+            local: local.deletedAt,
+            remote: remote.deletedAt
+        )
         local.syncRecordName = remote.recordName
         local.lastSyncedAt = Date()
     }
@@ -358,50 +399,107 @@ final class PiepCloudSyncManager {
 
         let dirtySessions = sessions.filter(needsUpload)
         let dirtyObservations = observations.filter(needsUpload)
-        var recordsToSave = dirtySessions.map(sessionRecord)
-        recordsToSave.append(contentsOf: dirtyObservations.compactMap(observationRecord))
-
-        guard !recordsToSave.isEmpty else { return }
-
-        let database = container.privateCloudDatabase
-        let result = try await database.modifyRecords(
-            saving: recordsToSave,
-            deleting: [],
-            savePolicy: .changedKeys,
-            atomically: false
-        )
-
-        let saveErrors = result.saveResults.compactMap { recordID, saveResult -> String? in
-            if case let .failure(error) = saveResult {
-                if let cloudError = error as? CKError {
-                    return "\(recordID.recordName): \(cloudError.code)"
-                }
-                return "\(recordID.recordName): \(error.localizedDescription)"
-            }
-            return nil
-        }
-        if !saveErrors.isEmpty {
-            throw PiepCloudSyncError.partialUpload(saveErrors)
-        }
-
-        let savedRecordNames = Set(result.saveResults.compactMap {
-            try? $0.value.get().recordID.recordName
-        })
         let syncDate = Date()
+        var savedRecordNames = Set<String>()
+        var saveErrors: [String] = []
 
-        for session in dirtySessions
-            where savedRecordNames.contains(recordName(for: session.id)) {
+        pendingSessionUploadCount = dirtySessions.count
+        pendingObservationUploadCount = dirtyObservations.count
+        lastUploadIssue = nil
+
+        for session in dirtySessions {
+            do {
+                try await save(record: sessionRecord(session))
+                savedRecordNames.insert(recordName(for: session.id))
+            } catch {
+                saveErrors.append(uploadErrorText(recordName: recordName(for: session.id), error: error))
+            }
+        }
+
+        for observation in dirtyObservations {
+            guard let record = observationRecord(observation) else {
+                saveErrors.append("\(recordName(for: observation.id)): Session fehlt")
+                continue
+            }
+            do {
+                try await save(record: record)
+                savedRecordNames.insert(recordName(for: observation.id))
+            } catch {
+                saveErrors.append(uploadErrorText(recordName: recordName(for: observation.id), error: error))
+            }
+        }
+
+        for session in dirtySessions where savedRecordNames.contains(recordName(for: session.id)) {
             session.syncRecordName = recordName(for: session.id)
             session.lastSyncedAt = syncDate
         }
 
-        for observation in dirtyObservations
-            where savedRecordNames.contains(recordName(for: observation.id)) {
+        for observation in dirtyObservations where savedRecordNames.contains(recordName(for: observation.id)) {
             observation.syncRecordName = recordName(for: observation.id)
             observation.lastSyncedAt = syncDate
         }
 
         try modelContext.save()
+
+        pendingSessionUploadCount = dirtySessions.filter {
+            !savedRecordNames.contains(recordName(for: $0.id))
+        }.count
+        pendingObservationUploadCount = dirtyObservations.filter {
+            !savedRecordNames.contains(recordName(for: $0.id))
+        }.count
+        lastUploadIssue = saveErrors.first
+
+        if !saveErrors.isEmpty {
+            throw PiepCloudSyncError.partialUpload(saveErrors)
+        }
+
+        pendingSessionUploadCount = 0
+        pendingObservationUploadCount = 0
+        lastUploadIssue = nil
+    }
+
+    private func save(record: CKRecord) async throws {
+        let database = container.privateCloudDatabase
+        do {
+            try await save(record: record, database: database)
+        } catch let error as CKError where error.code == .serverRecordChanged {
+            guard let serverRecord = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord else {
+                throw error
+            }
+
+            let localUpdatedAt = record["updatedAt"] as? Date ?? .distantPast
+            let serverUpdatedAt = serverRecord["updatedAt"] as? Date ?? .distantPast
+            guard !PiepConflictResolver.remoteWins(
+                localUpdatedAt: localUpdatedAt,
+                remoteUpdatedAt: serverUpdatedAt
+            ) else {
+                return
+            }
+
+            for key in record.allKeys() {
+                serverRecord[key] = record[key]
+            }
+            try await save(record: serverRecord, database: database)
+        }
+    }
+
+    private func save(record: CKRecord, database: CKDatabase) async throws {
+        let result = try await database.modifyRecords(
+            saving: [record],
+            deleting: [],
+            savePolicy: .changedKeys,
+            atomically: false
+        )
+        if let saveResult = result.saveResults[record.recordID] {
+            _ = try saveResult.get()
+        }
+    }
+
+    private func uploadErrorText(recordName: String, error: Error) -> String {
+        if let cloudError = error as? CKError {
+            return "\(recordName): \(cloudError.code)"
+        }
+        return "\(recordName): \(error.localizedDescription)"
     }
 
     private func localSyncCounts(modelContext: ModelContext) throws -> CloudSyncCounts {
@@ -410,10 +508,16 @@ final class PiepCloudSyncManager {
             FetchDescriptor<SessionSpeciesObservation>()
         )
         let species = Set(observations.map(\.scientificName))
+        let visibleObservations = observations.filter {
+            !$0.isDeleted && $0.status != .discarded && !$0.isExcludedHumanSound
+        }
 
         return CloudSyncCounts(
+            visibleSessions: sessions.filter { !$0.isDeleted }.count,
             sessions: sessions.count,
+            visibleObservations: visibleObservations.count,
             observations: observations.count,
+            visibleSpecies: Set(visibleObservations.map(\.scientificName)).count,
             species: species.count
         )
     }
@@ -436,14 +540,14 @@ final class PiepCloudSyncManager {
             recordID: CKRecord.ID(recordName: recordName(for: session.id), zoneID: zoneID)
         )
         record["id"] = session.id.uuidString
-        record["startedAt"] = session.startedAt
-        record["endedAt"] = session.endedAt
-        record["latitude"] = session.latitude
-        record["longitude"] = session.longitude
-        record["locationName"] = session.locationName
-        record["createdAt"] = session.createdAt
-        record["updatedAt"] = session.updatedAt
-        record["deletedAt"] = session.deletedAt
+        record["startedAt"] = safeDate(session.startedAt)
+        setOptionalDate(session.endedAt, for: "endedAt", in: record)
+        setFiniteDouble(session.latitude, for: "latitude", in: record)
+        setFiniteDouble(session.longitude, for: "longitude", in: record)
+        setOptionalString(session.locationName, for: "locationName", in: record, maxLength: 240)
+        record["createdAt"] = safeDate(session.createdAt, fallback: session.startedAt)
+        record["updatedAt"] = safeDate(session.updatedAt, fallback: session.endedAt ?? session.startedAt)
+        setOptionalDate(session.deletedAt, for: "deletedAt", in: record)
         return record
     }
 
@@ -460,17 +564,81 @@ final class PiepCloudSyncManager {
         )
         record["id"] = observation.id.uuidString
         record["sessionID"] = sessionID.uuidString
-        record["scientificName"] = observation.scientificName
-        record["germanName"] = observation.germanName
-        record["bestConfidence"] = Double(observation.bestConfidence)
-        record["firstDetectedAt"] = observation.firstDetectedAt
-        record["lastDetectedAt"] = observation.lastDetectedAt
-        record["detectionCount"] = observation.detectionCount
+        record["scientificName"] = sanitizedString(
+            observation.scientificName,
+            fallback: "Unbekannte Art",
+            maxLength: 240
+        )
+        record["germanName"] = sanitizedString(
+            observation.germanName,
+            fallback: "Unbekannt",
+            maxLength: 240
+        )
+        record["bestConfidence"] = sanitizedConfidence(observation.bestConfidence)
+        record["firstDetectedAt"] = safeDate(observation.firstDetectedAt)
+        record["lastDetectedAt"] = safeDate(
+            observation.lastDetectedAt,
+            fallback: observation.firstDetectedAt
+        )
+        record["detectionCount"] = max(0, observation.detectionCount)
         record["status"] = observation.status.rawValue
-        record["createdAt"] = observation.createdAt
-        record["updatedAt"] = observation.updatedAt
-        record["deletedAt"] = observation.deletedAt
+        record["createdAt"] = safeDate(observation.createdAt, fallback: observation.firstDetectedAt)
+        record["updatedAt"] = safeDate(observation.updatedAt, fallback: observation.lastDetectedAt)
+        setOptionalDate(observation.deletedAt, for: "deletedAt", in: record)
         return record
+    }
+
+    private func setOptionalDate(_ date: Date?, for key: String, in record: CKRecord) {
+        guard let date else {
+            record[key] = nil
+            return
+        }
+
+        record[key] = safeDate(date)
+    }
+
+    private func setFiniteDouble(_ value: Double?, for key: String, in record: CKRecord) {
+        guard let value, value.isFinite else {
+            record[key] = nil
+            return
+        }
+
+        record[key] = value
+    }
+
+    private func setOptionalString(
+        _ value: String?,
+        for key: String,
+        in record: CKRecord,
+        maxLength: Int
+    ) {
+        let cleaned = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !cleaned.isEmpty else {
+            record[key] = nil
+            return
+        }
+
+        record[key] = String(cleaned.prefix(maxLength))
+    }
+
+    private func sanitizedString(
+        _ value: String,
+        fallback: String,
+        maxLength: Int
+    ) -> String {
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return fallback }
+        return String(cleaned.prefix(maxLength))
+    }
+
+    private func sanitizedConfidence(_ value: Float) -> Double {
+        guard value.isFinite else { return 0 }
+        return min(max(Double(value), 0), 1)
+    }
+
+    private func safeDate(_ date: Date, fallback: Date = Date()) -> Date {
+        guard date.timeIntervalSinceReferenceDate.isFinite else { return fallback }
+        return date
     }
 
     private func species(
@@ -495,19 +663,6 @@ final class PiepCloudSyncManager {
 
     private func recordName(for id: UUID) -> String {
         id.uuidString
-    }
-
-    private func newest(_ lhs: Date?, _ rhs: Date?) -> Date? {
-        switch (lhs, rhs) {
-        case let (.some(lhs), .some(rhs)):
-            return max(lhs, rhs)
-        case let (.some(lhs), .none):
-            return lhs
-        case let (.none, .some(rhs)):
-            return rhs
-        case (.none, .none):
-            return nil
-        }
     }
 
     private static func accountText(for status: CKAccountStatus) -> String {
@@ -551,8 +706,11 @@ private struct ZoneChangeFetchResult {
 }
 
 private struct CloudSyncCounts {
+    let visibleSessions: Int
     let sessions: Int
+    let visibleObservations: Int
     let observations: Int
+    let visibleSpecies: Int
     let species: Int
 }
 

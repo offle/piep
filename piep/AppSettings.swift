@@ -91,7 +91,7 @@ enum AppSettings {
     }
 
     nonisolated static var enabledAudioProfileIndices: [Int] {
-        (1...audioProfileCount).filter { audioProfileEnabled(profileIndex: $0) }
+        (1...audioProfileCount).filter { isAudioProfileEnabled(profileIndex: $0) }
     }
 
     nonisolated static var audioAnalysisProfiles: [AudioAnalysisProfile] {
@@ -274,7 +274,7 @@ enum AppSettings {
         )
     }
 
-    nonisolated private static func audioProfileEnabled(profileIndex: Int) -> Bool {
+    nonisolated static func isAudioProfileEnabled(profileIndex: Int) -> Bool {
         boolValue(
             forKey: audioProfileEnabledKey(profileIndex: profileIndex),
             defaultValue: defaultAudioProfileEnabled(profileIndex: profileIndex),

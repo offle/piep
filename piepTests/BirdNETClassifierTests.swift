@@ -1,4 +1,5 @@
 import AVFoundation
+import SwiftData
 import XCTest
 @testable import piep
 
@@ -229,6 +230,85 @@ final class BirdNETClassifierTests: XCTestCase {
         ))
         XCTAssertEqual(observation.detectionCount, 3)
         XCTAssertEqual(observation.bestConfidence, 0.9)
+    }
+
+    @MainActor
+    func testBackupRoundTripPreservesSessionIdentityAndDeletion() throws {
+        let source = try makeInMemoryContainer()
+        let sourceContext = source.mainContext
+        let species = BirdSpecies(scientificName: "Turdus merula", germanName: "Amsel")
+        let session = BirdSession(
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            latitude: 55.42,
+            longitude: 8.38,
+            locationName: "Fanø"
+        )
+        session.endedAt = Date(timeIntervalSince1970: 1_180)
+        let observation = SessionSpeciesObservation(
+            species: species,
+            confidence: 0.82,
+            detectedAt: Date(timeIntervalSince1970: 1_010)
+        )
+        observation.attach(to: session)
+        session.observations.append(observation)
+        sourceContext.insert(species)
+        sourceContext.insert(session)
+        sourceContext.insert(observation)
+        try sourceContext.save()
+
+        let data = try SessionDataArchiveService.encode(
+            SessionDataArchiveService.makeArchive(modelContext: sourceContext)
+        )
+        let decoded = try SessionDataArchiveService.decode(data)
+        let destination = try makeInMemoryContainer()
+        let result = try SessionDataArchiveService.importArchive(
+            decoded,
+            modelContext: destination.mainContext
+        )
+
+        XCTAssertEqual(result.sessions, 1)
+        XCTAssertEqual(result.observations, 1)
+        let restoredSessions = try destination.mainContext.fetch(FetchDescriptor<BirdSession>())
+        let restored = try XCTUnwrap(restoredSessions.first)
+        XCTAssertEqual(restored.id, session.id)
+        XCTAssertEqual(restored.locationName, "Fanø")
+        XCTAssertEqual(restored.reviewedDetections.first?.id, observation.id)
+        XCTAssertEqual(restored.reviewedDetections.first?.scientificName, "Turdus merula")
+
+        let secondImport = try SessionDataArchiveService.importArchive(
+            decoded,
+            modelContext: destination.mainContext
+        )
+        XCTAssertEqual(secondImport.sessions, 0)
+        XCTAssertEqual(secondImport.observations, 0)
+        XCTAssertEqual(try destination.mainContext.fetch(FetchDescriptor<BirdSession>()).count, 1)
+    }
+
+    func testConflictResolverKeepsNewestUpdateAndDeletion() {
+        let older = Date(timeIntervalSince1970: 100)
+        let newer = Date(timeIntervalSince1970: 200)
+
+        XCTAssertTrue(PiepConflictResolver.remoteWins(localUpdatedAt: older, remoteUpdatedAt: newer))
+        XCTAssertFalse(PiepConflictResolver.remoteWins(localUpdatedAt: newer, remoteUpdatedAt: older))
+        XCTAssertEqual(PiepConflictResolver.mergedDeletion(local: older, remote: newer), newer)
+        XCTAssertEqual(PiepConflictResolver.mergedDeletion(local: newer, remote: nil), newer)
+    }
+
+    @MainActor
+    private func makeInMemoryContainer() throws -> ModelContainer {
+        let schema = Schema([
+            BirdSpecies.self,
+            BirdSpeciesImage.self,
+            BirdSession.self,
+            SessionSpeciesObservation.self,
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            groupContainer: .none,
+            cloudKitDatabase: .none
+        )
+        return try ModelContainer(for: schema, configurations: [configuration])
     }
 
     private static var testPreprocessingSettings: AudioPreprocessingSettings {

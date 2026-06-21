@@ -147,6 +147,16 @@ final class BirdImageStore {
         imageDebugEntries.removeAll()
     }
 
+    func prefetchMissingImages(for scientificNames: [String]) async {
+        for scientificName in Set(scientificNames).sorted() {
+            guard !Task.isCancelled else { return }
+            if let cached = cachedInfo(for: scientificName), cachedImage(for: cached) != nil {
+                continue
+            }
+            _ = await image(for: scientificName)
+        }
+    }
+
     func cachedInfo(for scientificName: String) -> CachedBirdImageInfo? {
         guard let data = try? Data(contentsOf: metadataURL(for: scientificName)) else {
             return nil
