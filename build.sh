@@ -15,7 +15,7 @@ build_timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 
 xcode_overrides=()
 if [ -n "${bundle:-}" ]; then
-    xcode_overrides+=("PRODUCT_BUNDLE_IDENTIFIER=$bundle")
+    xcode_overrides+=("PIEP_BUNDLE_IDENTIFIER=$bundle")
 fi
 xcode_overrides+=("PIEP_BUILD_TIMESTAMP=$build_timestamp")
 if [ -n "${development_team:-}" ]; then

@@ -6,13 +6,23 @@ piep is a free, non-commercial bird sound detection app.
 
 - The user starts and stops listening manually.
 - The microphone is used only while listening or while recording a benchmark
-  sample in Settings > Expert.
+  sample in Settings > Expert, or while the user explicitly records a clip in
+  the Apple Watch companion app.
 - Bird sound detection runs on device with bundled BirdNET model files.
 - Audio is not uploaded by the app.
 - The app stores listening sessions locally so the user can review detected
   species later.
 - The app offers optional iCloud Sync. It is disabled by default and can be
   enabled in Settings by the user.
+
+## Apple Watch Companion
+
+- The Watch app records only after the user taps its microphone button.
+- A recording stops manually or automatically after three minutes.
+- The audio file is transferred directly to the paired iPhone with
+  WatchConnectivity. The iPhone performs the BirdNET analysis and creates a
+  normal listening session.
+- Watch recordings are not uploaded to a developer server or iCloud.
 
 ## Location Use
 

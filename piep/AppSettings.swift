@@ -8,6 +8,8 @@
 import Foundation
 
 enum AppSettings {
+    nonisolated static let appLanguageKey = "appLanguage"
+    nonisolated static let defaultAppLanguage = "de"
     nonisolated static let confidenceThresholdKey = "confidenceThreshold"
     nonisolated static let defaultConfidenceThreshold = 0.20
     nonisolated private static let confidenceThresholdDefaultMigrationKey =

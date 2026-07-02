@@ -16,3 +16,4 @@ IMPRINT.md
 # Local xcodebuild output
 build/
 build-tests/
+build-watch/

@@ -30,9 +30,13 @@ private final class BirdNameSpeaker: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func speak(germanName: String, scientificName: String) {
+        let localizedName = BirdNameLocalization.commonName(
+            scientificName: scientificName,
+            fallback: germanName
+        )
         Task {
             await speakWithRecordingPause(
-                germanName: germanName,
+                germanName: localizedName,
                 scientificName: scientificName
             )
         }
@@ -56,10 +60,12 @@ private final class BirdNameSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         synthesizer.stopSpeaking(at: .immediate)
         postDidSpeakNotification(germanName)
 
-        let germanUtterance = AVSpeechUtterance(string: germanName)
-        germanUtterance.voice = AVSpeechSynthesisVoice(language: "de-DE")
-        germanUtterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        await speak(germanUtterance)
+        let utterance = AVSpeechUtterance(string: germanName)
+        utterance.voice = AVSpeechSynthesisVoice(
+            language: BirdNameLocalization.speechLanguage
+        )
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        await speak(utterance)
     }
 
     private func configureAudioSessionForSpeech() {
@@ -157,18 +163,20 @@ final class BirdListeningViewModel {
     var tapCount = 0
     var analysisCount = 0
     var skippedAnalysisCount = 0
-    var lastAnalysisMessage = "Noch keine Analyse"
-    var lastAudioFormat = "Audio noch nicht gestartet"
-    var microphonePermission = "unbekannt"
+    var lastAnalysisMessage = AppLocalization.text("Noch keine Analyse")
+    var lastAudioFormat = AppLocalization.text("Audio noch nicht gestartet")
+    var microphonePermission = AppLocalization.text("unbekannt")
     var lastTopCandidates: [BirdDetection] = []
     var recentDetectionEvents: [RecentBirdDetection] = []
     var rawAnalysisWindows: [RawAnalysisWindow] = []
     var activeSession: BirdSession?
     var displayedSession: BirdSession?
     var recentAnalysisDurations: [TimeInterval] = []
-    var lastPreprocessingMessage = "Noch keine Audio-Vorverarbeitung"
+    var lastPreprocessingMessage = AppLocalization.text("Noch keine Audio-Vorverarbeitung")
     var detectionFlashTokens: [String: Int] = [:]
     var lowConfidenceDetections: [BirdDetection] = []
+    var isProcessingWatchRecording = false
+    var watchImportStatus: String?
 
     let analysisChunkDuration: TimeInterval = 3.0
     let analysisInterval: TimeInterval = 1.0
@@ -185,6 +193,7 @@ final class BirdListeningViewModel {
     private var isAudioPausedForSpeech = false
     private var locationNameTask: Task<Void, Never>?
     private var locationNameResolutionSessionID: UUID?
+    private var watchImportModelContext: ModelContext?
 
     var audioBufferFill: Double {
         min(Double(audioBufferSamples) / Double(BirdNETClassifier.chunkSamples), 1)
@@ -210,6 +219,200 @@ final class BirdListeningViewModel {
             await MainActor.run {
                 self?.classifier = c
                 self?.isModelLoaded = true
+                self?.processPendingWatchRecordings()
+            }
+        }
+    }
+
+    func configureWatchRecordingImport(modelContext: ModelContext) {
+        watchImportModelContext = modelContext
+        WatchRecordingInbox.shared.activate()
+        processPendingWatchRecordings()
+    }
+
+    func repairStoredSessionMetadata(modelContext: ModelContext) {
+        let sessions = visibleSessions(modelContext: modelContext)
+        var didChange = false
+
+        for session in sessions {
+            if repairStaleAnalyzingSession(session) {
+                didChange = true
+            }
+        }
+
+        if didChange {
+            try? modelContext.save()
+            WatchSessionSnapshotSender.update(sessions: sessions)
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            for session in sessions {
+                guard session.locationName?.isEmpty ?? true,
+                      let latitude = session.latitude,
+                      let longitude = session.longitude
+                else {
+                    continue
+                }
+
+                let name = await SessionLocationNameResolver.resolve(
+                    latitude: latitude,
+                    longitude: longitude
+                )
+                guard let name, !name.isEmpty else { continue }
+
+                await MainActor.run {
+                    guard session.locationName?.isEmpty ?? true else { return }
+                    session.locationName = name
+                    session.markUpdated()
+                    try? modelContext.save()
+                    WatchSessionSnapshotSender.update(
+                        sessions: self.visibleSessions(modelContext: modelContext)
+                    )
+                }
+            }
+        }
+    }
+
+    @discardableResult
+    private func repairStaleAnalyzingSession(_ session: BirdSession) -> Bool {
+        guard session.analysisStatus == .analyzing else {
+            return false
+        }
+
+        guard !session.storedNonHumanDetections.isEmpty || session.isStaleExternalAnalysis else {
+            return false
+        }
+
+        if session.endedAt == nil {
+            session.endedAt = session.effectiveEndedAt
+        }
+
+        session.analysisStatusRawValue = session.effectiveAnalysisStatus.rawValue
+        session.markUpdated(at: session.endedAt ?? Date())
+        return true
+    }
+
+    func processPendingWatchRecordings() {
+        guard !isListening,
+              !isDebugAnalyzing,
+              !isProcessingWatchRecording,
+              let classifier,
+              let modelContext = watchImportModelContext
+        else {
+            return
+        }
+
+        let recordings = WatchRecordingInbox.pendingRecordings()
+        guard !recordings.isEmpty else { return }
+
+        isProcessingWatchRecording = true
+        errorMessage = nil
+        watchImportStatus = AppLocalization.text("Watch-Aufnahme wird analysiert")
+
+        Task { [weak self] in
+            guard let self else { return }
+            for recording in recordings {
+                defer {
+                    WatchRecordingInbox.remove(recording)
+                }
+
+                do {
+                    if let existingSession = self.session(
+                        id: recording.metadata.recordingID,
+                        modelContext: modelContext
+                    ) {
+                        if existingSession.analysisStatus == .completed {
+                            continue
+                        }
+                    }
+
+                    let processingSession = self.session(
+                        id: recording.metadata.recordingID,
+                        modelContext: modelContext
+                    ) ?? self.createProcessingSession(
+                        id: recording.metadata.recordingID,
+                        startedAt: recording.metadata.startedAt,
+                        latitude: recording.metadata.latitude,
+                        longitude: recording.metadata.longitude,
+                        source: .watch,
+                        modelContext: modelContext
+                    )
+                    WatchSessionSnapshotSender.update(
+                        sessions: self.visibleSessions(modelContext: modelContext)
+                    )
+
+                    let samples = try await Task.detached {
+                        try AudioSampleLoader.loadMono48k(
+                            from: recording.audioURL,
+                            maximumDuration: 180
+                        )
+                    }.value
+                    guard samples.count >= BirdNETClassifier.chunkSamples else {
+                        throw WatchRecordingImportError.recordingTooShort
+                    }
+
+                    let metadata = recording.metadata
+                    let profiles = AppSettings.audioAnalysisProfiles
+                    let threshold = AppSettings.confidenceThreshold
+                    let windows = await Task.detached {
+                        classifier.clearLocationFilter()
+                        if let latitude = metadata.latitude,
+                           let longitude = metadata.longitude
+                        {
+                            classifier.updateLocationFilter(
+                                latitude: latitude,
+                                longitude: longitude
+                            )
+                        }
+                        return WatchRecordingAnalyzer.analyze(
+                            samples: samples,
+                            profiles: profiles,
+                            confidenceThreshold: threshold
+                        ) { chunk in
+                            classifier.classify(
+                                audioSamples: chunk,
+                                minimumConfidence: 0.001
+                            )
+                        }
+                    }.value
+
+                    await self.storeWatchRecording(
+                        recording,
+                        session: processingSession,
+                        samples: samples,
+                        windows: windows,
+                        modelContext: modelContext
+                    )
+                } catch {
+                    self.errorMessage = AppLocalization.text(
+                        "Watch-Aufnahme konnte nicht analysiert werden: %@",
+                        error.localizedDescription
+                    )
+                    if let failedSession = self.session(
+                        id: recording.metadata.recordingID,
+                        modelContext: modelContext
+                    ) {
+                        failedSession.analysisStatus = .failed
+                        failedSession.endedAt = failedSession.startedAt
+                            .addingTimeInterval(recording.metadata.duration)
+                        try? modelContext.save()
+                        WatchSessionSnapshotSender.update(
+                            sessions: self.visibleSessions(modelContext: modelContext)
+                        )
+                    }
+                }
+            }
+
+            self.isProcessingWatchRecording = false
+            if self.errorMessage == nil {
+                self.watchImportStatus = AppLocalization.text(
+                    "Watch-Aufnahme wurde als Session gespeichert"
+                )
+            } else {
+                self.watchImportStatus = AppLocalization.text(
+                    "Watch-Aufnahme konnte nicht analysiert werden"
+                )
             }
         }
     }
@@ -227,7 +430,7 @@ final class BirdListeningViewModel {
     private func startListening(modelContext: ModelContext) {
         guard !isDebugAnalyzing else { return }
         guard classifier != nil else {
-            errorMessage = "Modell wird noch geladen…"
+            errorMessage = AppLocalization.text("Modell wird noch geladen…")
             return
         }
 
@@ -272,17 +475,17 @@ final class BirdListeningViewModel {
             recentDetectionEvents = []
             rawAnalysisWindows = []
             recentAnalysisDurations = []
-            lastPreprocessingMessage = "Sammle Audio"
+            lastPreprocessingMessage = AppLocalization.text("Sammle Audio")
             audioBufferSamples = 0
             tapCount = 0
             analysisCount = 0
             skippedAnalysisCount = 0
-            lastAnalysisMessage = "Sammle 3 Sekunden Audio"
+            lastAnalysisMessage = AppLocalization.text("Sammle 3 Sekunden Audio")
             errorMessage = nil
 
             scheduleAnalysisTimer()
         } catch {
-            errorMessage = "Mikrofon-Fehler: \(error.localizedDescription)"
+            errorMessage = AppLocalization.text("Mikrofon-Fehler: %@", error.localizedDescription)
         }
     }
 
@@ -296,8 +499,8 @@ final class BirdListeningViewModel {
         isProcessing = false
         audioLevel = 0
         audioBufferSamples = 0
-        lastAnalysisMessage = "Gestoppt"
-        lastPreprocessingMessage = "Gestoppt"
+        lastAnalysisMessage = AppLocalization.text("Gestoppt")
+        lastPreprocessingMessage = AppLocalization.text("Gestoppt")
         hasAppliedLocationFilter = false
         locationNameTask?.cancel()
         locationNameTask = nil
@@ -306,17 +509,267 @@ final class BirdListeningViewModel {
         displayedSession = activeSession ?? displayedSession
         try? modelContext.save()
         PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
+        WatchSessionSnapshotSender.update(sessions: visibleSessions(modelContext: modelContext))
         activeSession = nil
         activeModelContext = nil
         BirdNameSpeaker.isRecording = false
         BirdNameSpeaker.pauseRecordingForSpeech = nil
         BirdNameSpeaker.resumeRecordingAfterSpeech = nil
+        processPendingWatchRecordings()
+    }
+
+    private func hasSession(id: UUID, modelContext: ModelContext) -> Bool {
+        session(id: id, modelContext: modelContext) != nil
+    }
+
+    private func session(id: UUID, modelContext: ModelContext) -> BirdSession? {
+        let descriptor = FetchDescriptor<BirdSession>(
+            predicate: #Predicate { session in
+                session.id == id
+            }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    private func createProcessingSession(
+        id: UUID = UUID(),
+        startedAt: Date,
+        latitude: Double?,
+        longitude: Double?,
+        source: BirdSessionSource,
+        modelContext: ModelContext
+    ) -> BirdSession {
+        let session = BirdSession(
+            id: id,
+            startedAt: startedAt,
+            latitude: latitude,
+            longitude: longitude
+        )
+        session.sourceRawValue = source.rawValue
+        session.analysisStatusRawValue = BirdSessionAnalysisStatus.analyzing.rawValue
+        modelContext.insert(session)
+        try? modelContext.save()
+        return session
+    }
+
+    private func visibleSessions(modelContext: ModelContext) -> [BirdSession] {
+        let descriptor = FetchDescriptor<BirdSession>(
+            predicate: #Predicate { session in
+                session.deletedAt == nil
+            },
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    private func storeWatchRecording(
+        _ recording: PendingWatchRecording,
+        session: BirdSession,
+        samples: [Float],
+        windows: [WatchAnalyzedWindow],
+        modelContext: ModelContext
+    ) async {
+        let metadata = recording.metadata
+        let audioDuration = Double(samples.count) / AudioSampleLoader.targetSampleRate
+        session.endedAt = metadata.startedAt.addingTimeInterval(audioDuration)
+        session.sourceRawValue = BirdSessionSource.watch.rawValue
+
+        for window in windows {
+            let detectedAt = metadata.startedAt.addingTimeInterval(
+                window.startSeconds
+            )
+            for detection in window.detections {
+                if let existing = session.observations.first(where: {
+                    !$0.isDeleted
+                        && $0.scientificName == detection.scientificName
+                }) {
+                    _ = existing.merge(
+                        confidence: detection.confidence,
+                        detectedAt: detectedAt,
+                        countCooldown: 10
+                    )
+                } else {
+                    let species = birdSpecies(
+                        for: detection,
+                        modelContext: modelContext
+                    )
+                    let observation = SessionSpeciesObservation(
+                        species: species,
+                        confidence: detection.confidence,
+                        detectedAt: detectedAt
+                    )
+                    observation.attach(to: session)
+                    session.observations.append(observation)
+                }
+            }
+        }
+        session.analysisStatusRawValue = BirdSessionAnalysisStatus.completed.rawValue
+        session.markUpdated(at: session.endedAt ?? Date())
+
+        if let latitude = metadata.latitude,
+           let longitude = metadata.longitude
+        {
+            session.locationName = await SessionLocationNameResolver.resolve(
+                latitude: latitude,
+                longitude: longitude
+            )
+        }
+
+        try? modelContext.save()
+        displayedSession = session
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
+        WatchSessionSnapshotSender.update(sessions: visibleSessions(modelContext: modelContext))
+    }
+
+    func importAudioFileAsSession(
+        from url: URL,
+        startedAt: Date,
+        latitude: Double?,
+        longitude: Double?,
+        modelContext: ModelContext
+    ) {
+        guard !isListening, !isDebugAnalyzing, !isProcessingWatchRecording else {
+            errorMessage = AppLocalization.text("Analyse läuft bereits")
+            return
+        }
+        guard let classifier else {
+            errorMessage = AppLocalization.text("Modell wird noch geladen…")
+            return
+        }
+
+        let session = createProcessingSession(
+            startedAt: startedAt,
+            latitude: latitude,
+            longitude: longitude,
+            source: .importedAudio,
+            modelContext: modelContext
+        )
+        displayedSession = session
+        isProcessingWatchRecording = true
+        watchImportStatus = AppLocalization.text("Audio-Datei wird analysiert")
+        WatchSessionSnapshotSender.update(sessions: visibleSessions(modelContext: modelContext))
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let samples = try await Task.detached {
+                    try AudioSampleLoader.loadMono48k(
+                        from: url,
+                        maximumDuration: 180
+                    )
+                }.value
+                guard samples.count >= BirdNETClassifier.chunkSamples else {
+                    throw WatchRecordingImportError.recordingTooShort
+                }
+
+                let profiles = AppSettings.audioAnalysisProfiles
+                let threshold = AppSettings.confidenceThreshold
+                let windows = await Task.detached {
+                    classifier.clearLocationFilter()
+                    if let latitude, let longitude {
+                        classifier.updateLocationFilter(
+                            latitude: latitude,
+                            longitude: longitude
+                        )
+                    }
+                    return WatchRecordingAnalyzer.analyze(
+                        samples: samples,
+                        profiles: profiles,
+                        confidenceThreshold: threshold
+                    ) { chunk in
+                        classifier.classify(
+                            audioSamples: chunk,
+                            minimumConfidence: 0.001
+                        )
+                    }
+                }.value
+
+                await self.storeAnalyzedAudioSession(
+                    session,
+                    startedAt: startedAt,
+                    audioDuration: Double(samples.count) / AudioSampleLoader.targetSampleRate,
+                    windows: windows,
+                    modelContext: modelContext
+                )
+                self.watchImportStatus = AppLocalization.text(
+                    "Audio-Datei wurde als Session gespeichert"
+                )
+                self.errorMessage = nil
+            } catch {
+                session.analysisStatus = .failed
+                session.endedAt = startedAt
+                session.markUpdated()
+                try? modelContext.save()
+                self.errorMessage = AppLocalization.text(
+                    "Audio-Datei konnte nicht analysiert werden: %@",
+                    error.localizedDescription
+                )
+                self.watchImportStatus = AppLocalization.text(
+                    "Audio-Datei konnte nicht analysiert werden"
+                )
+                WatchSessionSnapshotSender.update(
+                    sessions: self.visibleSessions(modelContext: modelContext)
+                )
+            }
+            self.isProcessingWatchRecording = false
+        }
+    }
+
+    private func storeAnalyzedAudioSession(
+        _ session: BirdSession,
+        startedAt: Date,
+        audioDuration: TimeInterval,
+        windows: [WatchAnalyzedWindow],
+        modelContext: ModelContext
+    ) async {
+        session.endedAt = startedAt.addingTimeInterval(audioDuration)
+        for window in windows {
+            let detectedAt = startedAt.addingTimeInterval(window.startSeconds)
+            for detection in window.detections {
+                if let existing = session.observations.first(where: {
+                    !$0.isDeleted && $0.scientificName == detection.scientificName
+                }) {
+                    _ = existing.merge(
+                        confidence: detection.confidence,
+                        detectedAt: detectedAt,
+                        countCooldown: 10
+                    )
+                } else {
+                    let species = birdSpecies(
+                        for: detection,
+                        modelContext: modelContext
+                    )
+                    let observation = SessionSpeciesObservation(
+                        species: species,
+                        confidence: detection.confidence,
+                        detectedAt: detectedAt
+                    )
+                    observation.attach(to: session)
+                    session.observations.append(observation)
+                }
+            }
+        }
+        session.analysisStatus = .completed
+
+        if let latitude = session.latitude,
+           let longitude = session.longitude
+        {
+            session.locationName = await SessionLocationNameResolver.resolve(
+                latitude: latitude,
+                longitude: longitude
+            )
+        }
+
+        try? modelContext.save()
+        displayedSession = session
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
+        WatchSessionSnapshotSender.update(sessions: visibleSessions(modelContext: modelContext))
     }
 
     func startDebugAnalysis() {
         guard !isListening, !isDebugAnalyzing else { return }
         guard classifier != nil else {
-            errorMessage = "Modell wird noch geladen…"
+            errorMessage = AppLocalization.text("Modell wird noch geladen…")
             return
         }
 
@@ -338,12 +791,12 @@ final class BirdListeningViewModel {
             tapCount = 0
             analysisCount = 0
             skippedAnalysisCount = 0
-            lastAnalysisMessage = "Sammle 3 Sekunden Audio"
-            lastPreprocessingMessage = "Sammle Audio"
+            lastAnalysisMessage = AppLocalization.text("Sammle 3 Sekunden Audio")
+            lastPreprocessingMessage = AppLocalization.text("Sammle Audio")
             errorMessage = nil
             scheduleAnalysisTimer()
         } catch {
-            errorMessage = "Mikrofon-Fehler: \(error.localizedDescription)"
+            errorMessage = AppLocalization.text("Mikrofon-Fehler: %@", error.localizedDescription)
         }
     }
 
@@ -357,8 +810,8 @@ final class BirdListeningViewModel {
         audioLevel = 0
         audioBufferSamples = 0
         hasAppliedLocationFilter = false
-        lastAnalysisMessage = "Debug-Analyse gestoppt"
-        lastPreprocessingMessage = "Gestoppt"
+        lastAnalysisMessage = AppLocalization.text("Debug-Analyse gestoppt")
+        lastPreprocessingMessage = AppLocalization.text("Gestoppt")
     }
 
     private func startAudioInput() throws {
@@ -391,7 +844,7 @@ final class BirdListeningViewModel {
         audioInput.stop()
         audioLevel = 0
         audioBufferSamples = 0
-        lastAnalysisMessage = "Sprachausgabe: Aufnahme pausiert"
+        lastAnalysisMessage = AppLocalization.text("Sprachausgabe: Aufnahme pausiert")
     }
 
     private func resumeAudioAfterSpeech() {
@@ -399,10 +852,10 @@ final class BirdListeningViewModel {
         do {
             try startAudioInput()
             isAudioPausedForSpeech = false
-            lastAnalysisMessage = "Sammle 3 Sekunden Audio"
+            lastAnalysisMessage = AppLocalization.text("Sammle 3 Sekunden Audio")
             scheduleAnalysisTimer()
         } catch {
-            errorMessage = "Mikrofon-Fehler: \(error.localizedDescription)"
+            errorMessage = AppLocalization.text("Mikrofon-Fehler: %@", error.localizedDescription)
         }
     }
 
@@ -419,13 +872,13 @@ final class BirdListeningViewModel {
     private func updateMicrophonePermission() {
         switch AVAudioSession.sharedInstance().recordPermission {
         case .granted:
-            microphonePermission = "erlaubt"
+            microphonePermission = AppLocalization.text("erlaubt")
         case .denied:
-            microphonePermission = "verweigert"
+            microphonePermission = AppLocalization.text("verweigert")
         case .undetermined:
-            microphonePermission = "nicht gefragt"
+            microphonePermission = AppLocalization.text("nicht gefragt")
         @unknown default:
-            microphonePermission = "unbekannt"
+            microphonePermission = AppLocalization.text("unbekannt")
         }
     }
 
@@ -457,8 +910,8 @@ final class BirdListeningViewModel {
         ) else {
             skippedAnalysisCount += 1
             audioBufferSamples = audioInput.bufferedSampleCount
-            lastAnalysisMessage = String(
-                format: "Warte auf Audio: %.1f / 3.0 s",
+            lastAnalysisMessage = AppLocalization.text(
+                "Warte auf Audio: %.1f / 3.0 s",
                 audioBufferSeconds
             )
             return  // Not enough audio data yet
@@ -466,7 +919,10 @@ final class BirdListeningViewModel {
 
         isProcessing = true
         analysisCount += 1
-        lastAnalysisMessage = "Analyse \(analysisCount) läuft"
+        lastAnalysisMessage = AppLocalization.text(
+            "Analyse %lld läuft",
+            analysisCount
+        )
 
         Task.detached { [weak self] in
             let threshold = AppSettings.confidenceThreshold
@@ -513,8 +969,10 @@ final class BirdListeningViewModel {
                         candidatesByProfile: recordedCandidatesByProfile
                     )
                     self.lastPreprocessingMessage = preprocessingMessage
-                    self.lastAnalysisMessage =
-                        "Analyse \(self.analysisCount): kein relevantes Band-Signal"
+                    self.lastAnalysisMessage = AppLocalization.text(
+                        "Analyse %lld: kein relevantes Band-Signal",
+                        self.analysisCount
+                    )
                     self.isProcessing = false
                 }
                 return
@@ -547,8 +1005,16 @@ final class BirdListeningViewModel {
                 self.recordRecentDetectionEvents(results)
                 self.recordDetections(results)
                 self.lastAnalysisMessage = results.isEmpty
-                    ? "Analyse \(self.analysisCount): kein Treffer über \(Int(threshold * 100))%"
-                    : "Analyse \(self.analysisCount): \(results.count) Treffer"
+                    ? AppLocalization.text(
+                        "Analyse %lld: kein Treffer über %lld%%",
+                        self.analysisCount,
+                        Int(threshold * 100)
+                    )
+                    : AppLocalization.text(
+                        "Analyse %lld: %lld Treffer",
+                        self.analysisCount,
+                        results.count
+                    )
                 self.isProcessing = false
             }
         }
@@ -831,6 +1297,9 @@ final class BirdListeningViewModel {
         }
 
         try? activeModelContext.save()
+        WatchSessionSnapshotSender.update(
+            sessions: visibleSessions(modelContext: activeModelContext)
+        )
     }
 
     func reconcileDetectionsForCurrentThreshold(modelContext: ModelContext) {
@@ -918,13 +1387,6 @@ final class BirdListeningViewModel {
         )
         modelContext.insert(species)
         return species
-    }
-}
-
-private extension BirdDetection {
-    nonisolated var isExcludedHumanSound: Bool {
-        scientificName.hasPrefix("Human ")
-            || germanName.hasPrefix("Mensch ")
     }
 }
 
@@ -1047,6 +1509,12 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Query(filter: #Predicate<BirdSpecies> { $0.deletedAt == nil })
     private var cachedSpecies: [BirdSpecies]
+    @Query(
+        filter: #Predicate<BirdSession> { $0.deletedAt == nil },
+        sort: \BirdSession.startedAt,
+        order: .reverse
+    )
+    private var cachedSessions: [BirdSession]
     @State private var viewModel = BirdListeningViewModel()
     @State private var spokenBirdName: String?
     @State private var speechFeedbackTask: Task<Void, Never>?
@@ -1076,7 +1544,7 @@ struct ContentView: View {
                     }
                     .tag(MainTab.listening)
 
-                SessionsView()
+                SessionsView(viewModel: viewModel)
                     .tabItem {
                         Label("Sessions", systemImage: "list.bullet.rectangle")
                     }
@@ -1103,9 +1571,15 @@ struct ContentView: View {
         }
         .onAppear {
             LocalDataMigration.runIfNeeded(modelContext: modelContext)
+            viewModel.configureWatchRecordingImport(modelContext: modelContext)
             viewModel.loadModel()
+            viewModel.repairStoredSessionMetadata(modelContext: modelContext)
             PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
+            WatchSessionSnapshotSender.update(sessions: cachedSessions)
             updateIdleTimerState()
+        }
+        .task(id: watchSessionSnapshotSignature) {
+            WatchSessionSnapshotSender.update(sessions: cachedSessions)
         }
         .task(id: cachedSpecies.map(\.scientificName).sorted()) {
             await BirdImageStore.shared.prefetchMissingImages(
@@ -1122,7 +1596,10 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
+            viewModel.repairStoredSessionMetadata(modelContext: modelContext)
+            viewModel.processPendingWatchRecordings()
             PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
+            WatchSessionSnapshotSender.update(sessions: cachedSessions)
             Task {
                 await BirdImageStore.shared.prefetchMissingImages(
                     for: cachedSpecies
@@ -1130,6 +1607,20 @@ struct ContentView: View {
                         .map(\.scientificName)
                 )
             }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: WatchRecordingInbox.didReceiveRecording
+            )
+        ) { _ in
+            viewModel.processPendingWatchRecordings()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: WatchRecordingInbox.didRequestSessionSnapshots
+            )
+        ) { _ in
+            WatchSessionSnapshotSender.update(sessions: cachedSessions)
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -1170,6 +1661,13 @@ struct ContentView: View {
     private func updateIdleTimerState() {
         UIApplication.shared.isIdleTimerDisabled =
             keepScreenOnWhileRecording && viewModel.isListening
+    }
+
+    private var watchSessionSnapshotSignature: String {
+        cachedSessions.prefix(12).map {
+            "\($0.id.uuidString):\($0.updatedAt.timeIntervalSince1970):\($0.reviewedDetections.count):\($0.analysisStatusRawValue)"
+        }
+        .joined(separator: "|")
     }
 }
 
@@ -1312,7 +1810,7 @@ struct GlobalRecordingHeader: View {
         .buttonStyle(.plain)
         .disabled(!viewModel.isModelLoaded)
         .opacity(viewModel.isModelLoaded ? 1 : 0.5)
-        .accessibilityLabel(viewModel.isListening ? "Aufnahme stoppen" : "Aufnahme starten")
+        .accessibilityLabel(AppLocalization.text(viewModel.isListening ? "Aufnahme stoppen" : "Aufnahme starten"))
     }
 
     private var stateDot: some View {
@@ -1333,31 +1831,43 @@ struct GlobalRecordingHeader: View {
     }
 
     private var primaryText: String {
+        if viewModel.isProcessingWatchRecording {
+            return AppLocalization.text("Watch-Aufnahme")
+        }
+
         if !viewModel.isModelLoaded {
-            return "Modell wird geladen"
+            return AppLocalization.text("Modell wird geladen")
         }
 
         if let session = viewModel.displayedSession {
-            let state = viewModel.isListening ? "Höre zu" : "Letzte Session"
+            let state = AppLocalization.text(viewModel.isListening ? "Höre zu" : "Letzte Session")
             return "\(state) · \(session.locationDescription)"
         }
 
-        return "Bereit"
+        return AppLocalization.text("Bereit")
     }
 
     private var secondaryText: String {
+        if viewModel.isProcessingWatchRecording,
+           let watchImportStatus = viewModel.watchImportStatus
+        {
+            return watchImportStatus
+        }
+
         guard let session = viewModel.displayedSession else {
             return viewModel.isListening
                 ? viewModel.lastAnalysisMessage
-                : "Startet eine neue Session"
+                : AppLocalization.text("Startet eine neue Session")
         }
 
         let duration = Self.durationFormatter.string(from: session.duration) ?? "0:00"
         let count = session.reviewedDetections.count
-        let speciesText = count == 1 ? "1 Art" : "\(count) Arten"
+        let speciesText = count == 1
+            ? AppLocalization.text("1 Art")
+            : AppLocalization.text("%lld Arten", count)
 
         if viewModel.isListening {
-            return "\(duration) · \(speciesText) · \(viewModel.lastAnalysisMessage)"
+            return "\(duration) · \(speciesText) · \(AppLocalization.text(viewModel.lastAnalysisMessage))"
         }
 
         return "\(duration) · \(speciesText)"
@@ -1382,7 +1892,7 @@ struct GlobalRecordingHeader: View {
         viewModel.lastTopCandidates = []
         viewModel.lowConfidenceDetections = []
         viewModel.recentDetectionEvents = []
-        viewModel.lastAnalysisMessage = "Session gelöscht"
+        viewModel.lastAnalysisMessage = AppLocalization.text("Session gelöscht")
     }
 
     private static let durationFormatter: DateComponentsFormatter = {
@@ -1442,9 +1952,9 @@ private enum ListeningDetectionSort: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .frequency:
-            return "Häufigkeit"
+            return AppLocalization.text("Häufigkeit")
         case .confidence:
-            return "Genauigkeit"
+            return AppLocalization.text("Genauigkeit")
         }
     }
 }
@@ -1596,31 +2106,43 @@ struct ListeningView: View {
     }
 
     private var primaryListeningText: String {
+        if viewModel.isProcessingWatchRecording {
+            return AppLocalization.text("Watch-Aufnahme")
+        }
+
         if !viewModel.isModelLoaded {
-            return "Modell wird geladen"
+            return AppLocalization.text("Modell wird geladen")
         }
 
         if let session = viewModel.displayedSession {
-            let state = viewModel.isListening ? "Höre zu" : "Letzte Session"
+            let state = AppLocalization.text(viewModel.isListening ? "Höre zu" : "Letzte Session")
             return "\(state) · \(session.locationDescription)"
         }
 
-        return "Bereit"
+        return AppLocalization.text("Bereit")
     }
 
     private var secondaryListeningText: String {
+        if viewModel.isProcessingWatchRecording,
+           let watchImportStatus = viewModel.watchImportStatus
+        {
+            return watchImportStatus
+        }
+
         guard let session = viewModel.displayedSession else {
             return viewModel.isListening
                 ? viewModel.lastAnalysisMessage
-                : "Startet eine neue Session"
+                : AppLocalization.text("Startet eine neue Session")
         }
 
         let duration = Self.durationFormatter.string(from: session.duration) ?? "0:00"
         let count = session.reviewedDetections.count
-        let speciesText = count == 1 ? "1 Art" : "\(count) Arten"
+        let speciesText = count == 1
+            ? AppLocalization.text("1 Art")
+            : AppLocalization.text("%lld Arten", count)
 
         if viewModel.isListening {
-            return "\(duration) · \(speciesText) · \(viewModel.lastAnalysisMessage)"
+            return "\(duration) · \(speciesText) · \(AppLocalization.text(viewModel.lastAnalysisMessage))"
         }
 
         return "\(duration) · \(speciesText)"
@@ -1637,7 +2159,7 @@ struct ListeningView: View {
             Image(systemName: viewModel.locationManager.hasLocation
                   ? "location.fill" : "location.slash")
                 .font(.system(size: 11))
-            Text(viewModel.locationManager.statusMessage)
+            Text(AppLocalization.text(viewModel.locationManager.statusMessage))
                 .font(.system(size: 12, weight: .medium, design: .rounded))
         }
         .foregroundStyle(.secondary)
@@ -1796,7 +2318,7 @@ struct ListeningView: View {
     private var sortControl: some View {
         Picker("Sortierung", selection: $detectionSort) {
             ForEach(ListeningDetectionSort.allCases) { sortMode in
-                Text(sortMode.title).tag(sortMode)
+                Text(LocalizedStringKey(sortMode.title)).tag(sortMode)
             }
         }
         .pickerStyle(.segmented)
@@ -1861,7 +2383,7 @@ struct ListeningView: View {
         viewModel.lastTopCandidates = []
         viewModel.lowConfidenceDetections = []
         viewModel.recentDetectionEvents = []
-        viewModel.lastAnalysisMessage = "Session gelöscht"
+        viewModel.lastAnalysisMessage = AppLocalization.text("Session gelöscht")
     }
 
     private static let durationFormatter: DateComponentsFormatter = {
@@ -1899,7 +2421,11 @@ struct SessionCompletionSummaryCard: View {
                 .lineLimit(2)
 
             if let strongestDetection {
-                Text("Stärkster Treffer: \(strongestDetection.germanName) \(Int(strongestDetection.bestConfidence * 100)) %")
+                Text(AppLocalization.text(
+                    "Stärkster Treffer: %@ %lld %%",
+                    strongestDetection.localizedCommonName,
+                    Int(strongestDetection.bestConfidence * 100)
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1912,7 +2438,7 @@ struct SessionCompletionSummaryCard: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value)
                 .font(.title3.bold().monospacedDigit())
-            Text(label)
+            Text(AppLocalization.text(label))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -2057,7 +2583,7 @@ struct ListeningDebugView: View {
                         "Ø letzte 5",
                         value: averageAnalysisDurationText
                     )
-                    Text(viewModel.lastAnalysisMessage)
+                    Text(AppLocalization.text(viewModel.lastAnalysisMessage))
                         .foregroundStyle(.secondary)
                 }
 
@@ -2165,7 +2691,7 @@ struct ListeningDebugView: View {
 
     private var averageAnalysisDurationText: String {
         guard let duration = viewModel.averageRecentAnalysisDuration else {
-            return "noch keine Daten"
+            return AppLocalization.text("noch keine Daten")
         }
 
         return String(format: "%.2f s", duration)
@@ -2229,25 +2755,25 @@ private struct DebugAudioProfileRow: View {
     }
 
     private var frequencyRange: String {
-        guard settings.isBandpassEnabled else { return "ungefiltert" }
+        guard settings.isBandpassEnabled else { return AppLocalization.text("ungefiltert") }
         return "\(frequency(settings.highpassCutoffHz))–\(frequency(settings.lowpassCutoffHz)) Hz"
     }
 
     private var gateDescription: String {
-        guard settings.isBandEnergyGateEnabled else { return "Gate aus" }
+        guard settings.isBandEnergyGateEnabled else { return AppLocalization.text("Gate aus") }
         return String(format: "Gate ab RMS %.4f", settings.minimumBandRMS)
     }
 
     private var detailDescription: String {
         guard isEnabled else { return gateDescription }
         guard let strongestDetection else {
-            return "\(gateDescription) · noch kein Treffer"
+            return "\(gateDescription) · \(AppLocalization.text("noch kein Treffer"))"
         }
-        return "\(gateDescription) · \(strongestDetection.germanName)"
+        return "\(gateDescription) · \(strongestDetection.localizedCommonName)"
     }
 
     private var confidenceDescription: String {
-        guard isEnabled else { return "aus" }
+        guard isEnabled else { return AppLocalization.text("aus") }
         guard let strongestDetection else { return "–" }
         return String(format: "%.1f%%", strongestDetection.confidence * 100)
     }
@@ -2277,7 +2803,7 @@ private struct RawDetectionLine: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(detection.germanName)
+                Text(detection.localizedCommonName)
                 Text(detection.scientificName)
                     .font(.caption)
                     .italic()
@@ -2299,7 +2825,7 @@ private struct RawSummaryRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(summary.germanName)
+                Text(summary.localizedCommonName)
                     .lineLimit(2)
                 Text(summary.scientificName)
                     .font(.caption)
@@ -2339,7 +2865,7 @@ private struct RawSummaryRow: View {
 
     private func profileConfidenceText(_ profileIndex: Int) -> String {
         guard AppSettings.isAudioProfileEnabled(profileIndex: profileIndex) else {
-            return "aus"
+            return AppLocalization.text("aus")
         }
         guard let confidence = summary.maxConfidenceByProfile[
             AppSettings.audioProfileLabel(profileIndex: profileIndex)
@@ -2527,7 +3053,7 @@ struct BirdMapView: View {
                     return $0.confidence > $1.confidence
                 }
 
-                return $0.germanName.localizedCaseInsensitiveCompare($1.germanName) == .orderedAscending
+                return $0.localizedCommonName.localizedCaseInsensitiveCompare($1.localizedCommonName) == .orderedAscending
             }
             let center = Self.averageCoordinate(for: observations)
             let location = BirdMapLocationPin(
@@ -2571,7 +3097,7 @@ struct BirdMapView: View {
                     return $0.confidence > $1.confidence
                 }
 
-                return $0.germanName.localizedCaseInsensitiveCompare($1.germanName) == .orderedAscending
+                return $0.localizedCommonName.localizedCaseInsensitiveCompare($1.localizedCommonName) == .orderedAscending
             }
             let coordinate = Self.averageCoordinate(for: observations)
             let location = BirdMapLocationPin(
@@ -2800,7 +3326,10 @@ struct BirdMapSpeciesRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(observation.germanName)
+                    Text(BirdNameLocalization.commonName(
+                        scientificName: observation.scientificName,
+                        fallback: observation.germanName
+                    ))
                         .font(.headline)
                         .lineLimit(1)
                     BirdSpeakButton(
@@ -2914,6 +3443,8 @@ struct SettingsView: View {
     private var isICloudSyncEnabled = AppSettings.defaultICloudSyncEnabled
     @AppStorage(AppSettings.birdImageMaximumCountKey)
     private var birdImageMaximumCount = AppSettings.defaultBirdImageMaximumCount
+    @AppStorage(AppSettings.appLanguageKey)
+    private var appLanguage = AppSettings.defaultAppLanguage
     @State private var isConfirmingCacheDeletion = false
     @State private var isExportingBackup = false
     @State private var isImportingBackup = false
@@ -2950,6 +3481,15 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Sprache", selection: $appLanguage) {
+                        Text("Deutsch").tag("de")
+                        Text("Englisch").tag("en")
+                    }
+                } footer: {
+                    Text("Die Sprache der App wird sofort umgestellt.")
+                }
+
+                Section {
                     HStack {
                         Label("Standortfilter", systemImage: "location.fill")
                         Spacer()
@@ -2973,7 +3513,7 @@ struct SettingsView: View {
                         Label("iCloud Sync", systemImage: "icloud")
                     }
 
-                    LabeledContent("Status", value: cloudSyncManager.statusText)
+                    LabeledContent("Status", value: AppLocalization.text(cloudSyncManager.statusText))
 
                     if let lastErrorMessage = cloudSyncManager.lastErrorMessage {
                         Text(lastErrorMessage)
@@ -3144,7 +3684,7 @@ struct SettingsView: View {
                 defaultFilename: "piep-\(Self.backupDateFormatter.string(from: Date()))-\(exportKind.fileSuffix)"
             ) { result in
                 if case let .failure(error) = result {
-                    backupMessage = "Export fehlgeschlagen: \(error.localizedDescription)"
+                    backupMessage = AppLocalization.text("Export fehlgeschlagen: %@", error.localizedDescription)
                 }
             }
             .fileImporter(
@@ -3183,7 +3723,7 @@ struct SettingsView: View {
             backupDocument = PiepArchiveDocument(data: data)
             isExportingBackup = true
         } catch {
-            backupMessage = "Export fehlgeschlagen: \(error.localizedDescription)"
+            backupMessage = AppLocalization.text("Export fehlgeschlagen: %@", error.localizedDescription)
         }
     }
 
@@ -3198,9 +3738,13 @@ struct SettingsView: View {
                 modelContext: modelContext
             )
             PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
-            backupMessage = "Backup eingelesen: \(imported.sessions) neue Sessions und \(imported.observations) neue Beobachtungen. Vorhandene Datensätze wurden anhand ihrer UUID aktualisiert."
+            backupMessage = AppLocalization.text(
+                "Backup eingelesen: %lld neue Sessions und %lld neue Beobachtungen. Vorhandene Datensätze wurden anhand ihrer UUID aktualisiert.",
+                imported.sessions,
+                imported.observations
+            )
         } catch {
-            backupMessage = "Import fehlgeschlagen: \(error.localizedDescription)"
+            backupMessage = AppLocalization.text("Import fehlgeschlagen: %@", error.localizedDescription)
         }
     }
 
@@ -3292,7 +3836,7 @@ private struct CloudSyncComparisonRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(localValue)
                 .font(.body.monospacedDigit())
@@ -3383,7 +3927,7 @@ struct AppIconSelectionView: View {
 
     private func setIcon(_ choice: AppIconChoice) {
         guard UIApplication.shared.supportsAlternateIcons else {
-            errorMessage = "Alternative App Icons werden auf diesem Gerät nicht unterstützt."
+            errorMessage = AppLocalization.text("Alternative App Icons werden auf diesem Gerät nicht unterstützt.")
             return
         }
 
@@ -3424,7 +3968,7 @@ struct AppIconChoiceRow: View {
                 }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(choice.title)
+                Text(LocalizedStringKey(choice.title))
                     .font(.headline)
                     .foregroundStyle(.primary)
                 Text(choice.subtitle)
@@ -3813,7 +4357,7 @@ struct ExpertBenchmarkSection: View {
             }
             .padding(.vertical, 4)
 
-            LabeledContent("Status", value: viewModel.statusText)
+            LabeledContent("Status", value: AppLocalization.text(viewModel.statusText))
             LabeledContent("Format", value: viewModel.audioFormat)
             LabeledContent(
                 "Fenster",
@@ -3876,19 +4420,19 @@ struct ExpertBenchmarkSection: View {
     private var statusLabel: String {
         switch viewModel.state {
         case .idle:
-            return "bereit"
+            return AppLocalization.text("bereit")
         case .loadingModel:
-            return "Modell"
+            return AppLocalization.text("Modell")
         case .recording:
-            return "Aufnahme"
+            return AppLocalization.text("Aufnahme")
         case .ready:
-            return "Sample"
+            return AppLocalization.text("Sample")
         case .processing:
-            return "Render"
+            return AppLocalization.text("Render")
         case .finished:
-            return "fertig"
+            return AppLocalization.text("fertig")
         case .failed:
-            return "Fehler"
+            return AppLocalization.text("Fehler")
         }
     }
 }
@@ -3995,7 +4539,7 @@ struct ExpertBenchmarkProfileHeader: View {
 
     private var frequencyText: String {
         guard profileResult.settings.isBandpassEnabled else {
-            return "voll"
+            return AppLocalization.text("voll")
         }
         return "\(Self.frequency(profileResult.settings.highpassCutoffHz))-\(Self.frequency(profileResult.settings.lowpassCutoffHz))"
     }
@@ -4020,7 +4564,10 @@ struct ExpertBenchmarkProfileComparisonGridRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: spacing) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.germanName)
+                Text(BirdNameLocalization.commonName(
+                    scientificName: row.scientificName,
+                    fallback: row.germanName
+                ))
                     .font(.caption.weight(.semibold))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4141,7 +4688,10 @@ struct ExpertBenchmarkResultRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(result.germanName)
+                    Text(BirdNameLocalization.commonName(
+                        scientificName: result.scientificName,
+                        fallback: result.germanName
+                    ))
                         .font(.subheadline.weight(.semibold))
                     Text(result.scientificName)
                         .font(.caption)
@@ -4248,11 +4798,11 @@ private enum BirdOverviewSort: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .name:
-            return "Name"
+            return AppLocalization.text("Name")
         case .days:
-            return "Tage"
+            return AppLocalization.text("Tage")
         case .recent:
-            return "Zuletzt"
+            return AppLocalization.text("Zuletzt")
         }
     }
 }
@@ -4352,7 +4902,7 @@ struct BirdOverviewView: View {
     private var sortControl: some View {
         Picker("Sortierung", selection: $sortMode) {
             ForEach(BirdOverviewSort.allCases) { sortMode in
-                Text(sortMode.title).tag(sortMode)
+                Text(LocalizedStringKey(sortMode.title)).tag(sortMode)
             }
         }
         .pickerStyle(.segmented)
@@ -4369,28 +4919,28 @@ struct BirdOverviewView: View {
                 return true
             }
 
-            return species.germanName.localizedCaseInsensitiveContains(searchText)
+            return species.localizedCommonName.localizedCaseInsensitiveContains(searchText)
                 || species.scientificName.localizedCaseInsensitiveContains(searchText)
         }
 
         return filtered.sorted { lhs, rhs in
             switch sortMode {
             case .name:
-                return lhs.germanName.localizedCaseInsensitiveCompare(rhs.germanName) == .orderedAscending
+                return lhs.localizedCommonName.localizedCaseInsensitiveCompare(rhs.localizedCommonName) == .orderedAscending
             case .days:
                 let lhsDays = BirdSpeciesSessionStats.uniqueDayCount(for: lhs)
                 let rhsDays = BirdSpeciesSessionStats.uniqueDayCount(for: rhs)
                 if lhsDays != rhsDays {
                     return lhsDays > rhsDays
                 }
-                return lhs.germanName.localizedCaseInsensitiveCompare(rhs.germanName) == .orderedAscending
+                return lhs.localizedCommonName.localizedCaseInsensitiveCompare(rhs.localizedCommonName) == .orderedAscending
             case .recent:
                 let lhsDate = lhs.lastObservedAt ?? .distantPast
                 let rhsDate = rhs.lastObservedAt ?? .distantPast
                 if lhsDate != rhsDate {
                     return lhsDate > rhsDate
                 }
-                return lhs.germanName.localizedCaseInsensitiveCompare(rhs.germanName) == .orderedAscending
+                return lhs.localizedCommonName.localizedCaseInsensitiveCompare(rhs.localizedCommonName) == .orderedAscending
             }
         }
     }
@@ -4408,7 +4958,7 @@ struct BirdSpeciesDetailView: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
-                        Text(species.germanName)
+                        Text(species.localizedCommonName)
                             .font(.headline)
                         BirdSpeakButton(
                             germanName: species.germanName,
@@ -4462,7 +5012,7 @@ struct BirdSpeciesDetailView: View {
                 allowsMultipleImagesPerSpecies: true
             )
         }
-        .navigationTitle(species.germanName)
+        .navigationTitle(species.localizedCommonName)
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -4565,7 +5115,7 @@ struct BirdSpeciesSummaryRow: View {
     }
 
     private var speciesName: some View {
-        Text(species.germanName)
+        Text(species.localizedCommonName)
             .font(.headline)
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
@@ -4774,7 +5324,7 @@ struct BirdSpeciesSummary: Identifiable {
                     return $0.lastDetectedAt > $1.lastDetectedAt
                 }
 
-                return $0.germanName.localizedCaseInsensitiveCompare($1.germanName) == .orderedAscending
+                return $0.localizedCommonName.localizedCaseInsensitiveCompare($1.localizedCommonName) == .orderedAscending
             }
     }
 }
@@ -4802,6 +5352,7 @@ private struct MutableBirdSpeciesSummary {
 
 struct SessionsView: View {
 
+    @Bindable var viewModel: BirdListeningViewModel
     @Environment(\.modelContext) private var modelContext
     @Query(
         filter: #Predicate<BirdSession> { $0.deletedAt == nil },
@@ -4809,6 +5360,12 @@ struct SessionsView: View {
         order: .reverse
     )
     private var sessions: [BirdSession]
+    @State private var isImportingAudio = false
+    @State private var pendingAudioImportURL: URL?
+    @State private var importStartedAt = Date()
+    @State private var importLatitudeText = ""
+    @State private var importLongitudeText = ""
+    @State private var locationManager = LocationManager()
 
     var body: some View {
         NavigationStack {
@@ -4834,11 +5391,137 @@ struct SessionsView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        locationManager.requestLocation()
+                        isImportingAudio = true
+                    } label: {
+                        Label("Audio importieren", systemImage: "waveform.badge.plus")
+                    }
+                    .disabled(viewModel.isListening || viewModel.isProcessingWatchRecording)
+                }
+            }
+            .fileImporter(
+                isPresented: $isImportingAudio,
+                allowedContentTypes: [.audio],
+                allowsMultipleSelection: false
+            ) { result in
+                handleAudioImportSelection(result)
+            }
+            .sheet(
+                item: Binding(
+                    get: {
+                        pendingAudioImportURL.map { PendingAudioImport(url: $0) }
+                    },
+                    set: {
+                        pendingAudioImportURL = $0?.url
+                    }
+                )
+            ) { pending in
+                AudioSessionImportSheet(
+                    url: pending.url,
+                    startedAt: $importStartedAt,
+                    latitudeText: $importLatitudeText,
+                    longitudeText: $importLongitudeText,
+                    onCancel: {
+                        pendingAudioImportURL = nil
+                    },
+                    onImport: {
+                        startAudioImport(url: pending.url)
+                    }
+                )
+                .presentationDetents([.medium])
+            }
+        }
+        .onAppear {
+            locationManager.requestLocation()
         }
     }
 
     private var sessionDays: [SessionDaySummary] {
         SessionDaySummary.make(from: sessions)
+    }
+
+    private func handleAudioImportSelection(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            importStartedAt = Date()
+            if let latitude = locationManager.latitude,
+               let longitude = locationManager.longitude
+            {
+                importLatitudeText = String(format: "%.6f", latitude)
+                importLongitudeText = String(format: "%.6f", longitude)
+            } else {
+                importLatitudeText = ""
+                importLongitudeText = ""
+            }
+            pendingAudioImportURL = url
+        } catch {
+            viewModel.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func startAudioImport(url: URL) {
+        let latitude = Double(importLatitudeText.replacingOccurrences(of: ",", with: "."))
+        let longitude = Double(importLongitudeText.replacingOccurrences(of: ",", with: "."))
+        pendingAudioImportURL = nil
+        viewModel.importAudioFileAsSession(
+            from: url,
+            startedAt: importStartedAt,
+            latitude: latitude,
+            longitude: longitude,
+            modelContext: modelContext
+        )
+    }
+}
+
+private struct PendingAudioImport: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+private struct AudioSessionImportSheet: View {
+    let url: URL
+    @Binding var startedAt: Date
+    @Binding var latitudeText: String
+    @Binding var longitudeText: String
+    var onCancel: () -> Void
+    var onImport: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Audio") {
+                    Text(url.lastPathComponent)
+                        .lineLimit(2)
+                    Text("Die Datei wird analysiert und als neue Session gespeichert.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Session") {
+                    DatePicker("Zeit", selection: $startedAt)
+                    TextField("Breitengrad", text: $latitudeText)
+                        .keyboardType(.decimalPad)
+                    TextField("Längengrad", text: $longitudeText)
+                        .keyboardType(.decimalPad)
+                    Text("Leere Koordinaten speichern die Session ohne Ort.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Audio importieren")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Abbrechen", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Analysieren", action: onImport)
+                }
+            }
+        }
     }
 }
 
@@ -4941,7 +5624,7 @@ struct SessionDaySummary: Identifiable {
 
     var speciesPreview: String {
         guard !speciesNames.isEmpty else {
-            return "Keine Arten"
+            return AppLocalization.text("Keine Arten")
         }
 
         let visibleNames = speciesNames.prefix(4).joined(separator: ", ")
@@ -5025,10 +5708,23 @@ struct SessionRow: View {
                 .font(.headline)
                 .lineLimit(2)
 
-            HStack(spacing: 12) {
-                Label(session.dateDescription, systemImage: "calendar")
+            HStack(spacing: 6) {
+                SessionSourceBadge(source: session.source)
+                Text(session.dateDescription)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                Spacer(minLength: 0)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
                 Label(durationText, systemImage: "timer")
-                Label("\(session.reviewedDetections.count)", systemImage: "bird.fill")
+                Label("\(session.reviewedDetections.count) Arten", systemImage: "bird.fill")
+                if session.effectiveAnalysisStatus != .completed {
+                    Text(session.effectiveAnalysisStatus.label)
+                        .foregroundStyle(.orange)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -5041,10 +5737,34 @@ struct SessionRow: View {
     }
 }
 
+struct SessionSourceBadge: View {
+    let source: BirdSessionSource
+
+    var body: some View {
+        Label(source.label, systemImage: iconName)
+            .labelStyle(.titleAndIcon)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(.thinMaterial, in: Capsule())
+    }
+
+    private var iconName: String {
+        switch source {
+        case .watch:
+            return "applewatch"
+        case .importedAudio:
+            return "waveform"
+        case .iPhone:
+            return "iphone"
+        }
+    }
+}
+
 struct SessionDetailView: View {
 
     @Environment(\.modelContext) private var modelContext
-    let session: BirdSession
+    @Bindable var session: BirdSession
     @State private var detectionPendingDeletion: SessionBirdDetection?
 
     var body: some View {
@@ -5052,6 +5772,8 @@ struct SessionDetailView: View {
             Section {
                 LabeledContent("Start", value: Self.dateFormatter.string(from: session.startedAt))
                 LabeledContent("Dauer", value: Self.durationFormatter.string(from: session.duration) ?? "0:00")
+                LabeledContent("Quelle", value: session.source.label)
+                LabeledContent("Status", value: session.effectiveAnalysisStatus.label)
                 LabeledContent("Ort", value: session.locationDescription)
                 if let coordinateDescription = session.coordinateDescription {
                     LabeledContent("Koordinaten", value: coordinateDescription)
@@ -5119,9 +5841,26 @@ struct SessionDetailView: View {
             }
         } message: {
             if let detectionPendingDeletion {
-                Text("\(detectionPendingDeletion.germanName) wird aus dieser Session entfernt.")
+                Text("\(detectionPendingDeletion.localizedCommonName) wird aus dieser Session entfernt.")
             }
         }
+        .onAppear {
+            repairDisplayedSessionIfNeeded()
+        }
+    }
+
+    private func repairDisplayedSessionIfNeeded() {
+        guard session.analysisStatus == .analyzing,
+              session.isStaleExternalAnalysis
+        else { return }
+
+        if session.endedAt == nil {
+            session.endedAt = session.effectiveEndedAt
+        }
+        session.analysisStatusRawValue = session.effectiveAnalysisStatus.rawValue
+        session.markUpdated(at: session.endedAt ?? Date())
+        try? modelContext.save()
+        PiepCloudSyncManager.shared.syncIfEnabled(modelContext: modelContext)
     }
 
     private func deletePendingDetection() {
@@ -5177,7 +5916,7 @@ struct SessionDetectionReviewRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Text(detection.germanName)
+                        Text(detection.localizedCommonName)
                             .font(.headline)
                         BirdSpeakButton(
                             germanName: detection.germanName,
@@ -5206,7 +5945,7 @@ struct SessionDetectionReviewRow: View {
 
                 Spacer()
 
-                Label(detection.status.label, systemImage: "checkmark.circle.fill")
+                Label(LocalizedStringKey(detection.status.label), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(Color(red: 0.20, green: 0.65, blue: 0.40))
             }
             .font(.caption)
@@ -5233,7 +5972,7 @@ struct SessionDetectionCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(detection.germanName)
+                    Text(detection.localizedCommonName)
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -5255,7 +5994,7 @@ struct SessionDetectionCard: View {
 
                 HStack(spacing: 8) {
                     Text("\(detection.detectionCount)x")
-                    Text(detection.status.label)
+                    Text(LocalizedStringKey(detection.status.label))
                 }
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -5310,7 +6049,7 @@ struct SessionDetectionCard: View {
             }
             Button("Abbrechen", role: .cancel) { }
         } message: {
-            Text("\(detection.germanName) wird aus der aktiven Session entfernt.")
+            Text("\(detection.localizedCommonName) wird aus der aktiven Session entfernt.")
         }
         .onChange(of: flashToken) { _, newValue in
             guard newValue > 0 else { return }
@@ -5372,7 +6111,7 @@ struct DiagnosticItem: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
 
@@ -5407,7 +6146,7 @@ struct LowConfidenceDetectionRow: View {
             .opacity(0.58)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(detection.germanName)
+                Text(detection.localizedCommonName)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -5451,7 +6190,7 @@ struct DetectionCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(detection.germanName)
+                    Text(detection.localizedCommonName)
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -5551,36 +6290,44 @@ enum BirdSpeciesHistoryFormatter {
 
     static func listText(for species: BirdSpecies, now: Date = Date()) -> String {
         let firstSeen = species.firstObservedAt.map(dateText) ?? "unbekannt"
-        return "Erstfund: \(firstSeen) · Zuletzt: \(daysSinceLastSeenText(for: species, now: now))"
+        return AppLocalization.text(
+            "Erstfund: %@ · Zuletzt: %@",
+            firstSeen,
+            daysSinceLastSeenText(for: species, now: now)
+        )
     }
 
     static func firstSeenListText(for species: BirdSpecies) -> String {
         let firstSeen = species.firstObservedAt.map(dateText) ?? "unbekannt"
-        return "Erstfund: \(firstSeen)"
+        return AppLocalization.text("Erstfund: %@", firstSeen)
     }
 
     static func lastSeenListText(for species: BirdSpecies, now: Date = Date()) -> String {
-        "Zuletzt: \(daysSinceLastSeenText(for: species, now: now))"
+        AppLocalization.text("Zuletzt: %@", daysSinceLastSeenText(for: species, now: now))
     }
 
     static func detailText(for species: BirdSpecies, now: Date = Date()) -> String {
         let firstSeen = species.firstObservedAt.map(dateText) ?? "unbekannt"
-        return "Erstfund am \(firstSeen) · Letzte Sichtung \(daysSinceLastSeenText(for: species, now: now))"
+        return AppLocalization.text(
+            "Erstfund am %@ · Letzte Sichtung %@",
+            firstSeen,
+            daysSinceLastSeenText(for: species, now: now)
+        )
     }
 
     static func daysSinceLastSeenText(for species: BirdSpecies, now: Date = Date()) -> String {
         guard let lastObservedAt = species.lastObservedAt else {
-            return "unbekannt"
+            return AppLocalization.text("unbekannt")
         }
 
         let days = Calendar.current.dateComponents([.day], from: lastObservedAt, to: now).day ?? 0
         if days <= 0 {
-            return "heute"
+            return AppLocalization.text("heute")
         }
         if days == 1 {
-            return "vor 1 Tag"
+            return AppLocalization.text("vor 1 Tag")
         }
-        return "vor \(days) Tagen"
+        return AppLocalization.text("vor %lld Tagen", days)
     }
 
     private static func dateText(for date: Date) -> String {
@@ -5720,7 +6467,7 @@ struct BirdImageGalleryPreviewSheet: View {
                             .padding(.horizontal)
 
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(entry.germanName)
+                            Text(entry.localizedCommonName)
                                 .font(.headline)
                             Text(entry.title)
                                 .font(.caption)
@@ -5796,7 +6543,7 @@ struct ActiveSessionImageGallery: View {
                                                 .frame(width: 118, height: 88)
                                                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                                            Text(entry.germanName)
+                                            Text(entry.localizedCommonName)
                                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                                                 .foregroundStyle(.white.opacity(0.82))
                                                 .lineLimit(1)
@@ -5821,7 +6568,7 @@ struct ActiveSessionImageGallery: View {
                         } else {
                             ForEach(entries.prefix(maximumImageCount)) { entry in
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(entry.germanName)
+                                    Text(entry.localizedCommonName)
                                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                                         .foregroundStyle(.white.opacity(0.84))
                                     Text(entry.title)
@@ -5922,7 +6669,7 @@ struct BirdImageLicenseGallery: View {
                                                 .frame(width: 118, height: 88)
                                                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                                            Text(entry.germanName)
+                                            Text(entry.localizedCommonName)
                                                 .font(.caption.weight(.semibold))
                                                 .lineLimit(1)
                                         }
@@ -5944,7 +6691,7 @@ struct BirdImageLicenseGallery: View {
                     } else {
                         ForEach(entries.prefix(maximumImageCount)) { entry in
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.germanName)
+                                Text(entry.localizedCommonName)
                                     .font(.subheadline.weight(.semibold))
                                 Text(entry.title)
                                     .font(.caption)

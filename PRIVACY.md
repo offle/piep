@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-06-18
+Last updated: 2026-06-24
 
 piep is a free, non-commercial iOS app for detecting bird calls. The app is
 designed to process bird sound detection locally on the user's device.
@@ -16,12 +16,24 @@ The app does not upload microphone audio to a server operated by the app.
 Imported benchmark audio files are processed locally. The app keeps the most
 recent benchmark sample locally so the user can repeat benchmark runs.
 
+The optional Apple Watch companion app can record audio clips of up to three
+minutes. The recording is temporarily stored on the Watch and transferred
+directly to the paired iPhone through Apple's WatchConnectivity framework. The
+iPhone converts the recording into analysis windows and processes it locally
+with BirdNET. Successfully transferred and imported Watch recordings are
+removed from the temporary transfer storage. Watch audio is not synchronized
+through iCloud and is not sent to a developer-operated server.
+
 ### Location
 
 piep can request the device location to improve BirdNET predictions with
 regional bird occurrence information and to attach coordinates to listening
 sessions. Location data is stored locally as part of the user's sessions. The
 app does not upload session locations to a server operated by the app.
+
+When a recording starts on Apple Watch, the Watch may also request its current
+location. If available, those coordinates accompany the recording to the paired
+iPhone and become part of the resulting local listening session.
 
 The app may use Apple frameworks such as MapKit and Core Location to show maps
 and resolve location names. Data handled by Apple frameworks is governed by
@@ -68,6 +80,8 @@ The app integrates third-party model and library resources:
 - TensorFlow Lite is used for local model inference.
 - Wikimedia Commons is contacted when bird images are downloaded.
 - Apple CloudKit is used only if the user enables optional iCloud Sync.
+- Apple WatchConnectivity transfers Watch recordings directly between the
+  user's paired Watch and iPhone.
 
 ## Data Retention and Deletion
 

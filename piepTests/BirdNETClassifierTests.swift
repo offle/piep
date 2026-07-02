@@ -12,6 +12,56 @@ final class BirdNETClassifierTests: XCTestCase {
         return classifier
     }()
 
+    func testBirdNameLocalizationUsesSelectedLanguage() {
+        let defaults = UserDefaults.standard
+        let previousLanguage = defaults.string(forKey: AppSettings.appLanguageKey)
+        defer {
+            if let previousLanguage {
+                defaults.set(previousLanguage, forKey: AppSettings.appLanguageKey)
+            } else {
+                defaults.removeObject(forKey: AppSettings.appLanguageKey)
+            }
+        }
+
+        defaults.set("en", forKey: AppSettings.appLanguageKey)
+        XCTAssertEqual(
+            BirdNameLocalization.commonName(
+                scientificName: "Turdus merula",
+                fallback: "Amsel"
+            ),
+            "Eurasian Blackbird"
+        )
+
+        defaults.set("de", forKey: AppSettings.appLanguageKey)
+        XCTAssertEqual(
+            BirdNameLocalization.commonName(
+                scientificName: "Turdus merula",
+                fallback: "Amsel"
+            ),
+            "Amsel"
+        )
+    }
+
+    func testEnglishLocalizationCoversListeningStatus() {
+        let defaults = UserDefaults.standard
+        let previousLanguage = defaults.string(forKey: AppSettings.appLanguageKey)
+        defer {
+            if let previousLanguage {
+                defaults.set(previousLanguage, forKey: AppSettings.appLanguageKey)
+            } else {
+                defaults.removeObject(forKey: AppSettings.appLanguageKey)
+            }
+        }
+
+        defaults.set("en", forKey: AppSettings.appLanguageKey)
+
+        XCTAssertEqual(AppLocalization.text("Zuhören"), "Listen")
+        XCTAssertEqual(AppLocalization.text("Höre zu"), "Listening")
+        XCTAssertEqual(AppLocalization.text("Bereit"), "Ready")
+        XCTAssertEqual(AppLocalization.text("Startet eine neue Session"), "Starts a new session")
+        XCTAssertEqual(AppLocalization.text("%lld Arten", 3), "3 species")
+    }
+
     func testCommonBlackbirdSampleFindsAmsel() throws {
         let detections = try bestDetections(
             forResource: "turdus_merula_xc125792",
@@ -86,6 +136,51 @@ final class BirdNETClassifierTests: XCTestCase {
         XCTAssertEqual(windows.count, 3)
         XCTAssertEqual(windows.map(\.startSeconds), [0, 1, 2])
         XCTAssertTrue(windows.allSatisfy { $0.samples.count == BirdNETClassifier.chunkSamples })
+    }
+
+    func testWatchRecordingUsesOverlappingWindowsAndAllProfiles() {
+        let samples = [Float](
+            repeating: 0.1,
+            count: BirdNETClassifier.chunkSamples + ExpertBenchmarkProcessor.hopSamples
+        )
+        let settings = AudioPreprocessingSettings(
+            isBandpassEnabled: false,
+            highpassCutoffHz: 0,
+            lowpassCutoffHz: 24_000,
+            isBandEnergyGateEnabled: false,
+            minimumBandRMS: 0
+        )
+        let profiles = [
+            AudioAnalysisProfile(label: "P1", settings: settings),
+            AudioAnalysisProfile(label: "P2", settings: settings),
+        ]
+        var classificationCount = 0
+
+        let windows = WatchRecordingAnalyzer.analyze(
+            samples: samples,
+            profiles: profiles,
+            confidenceThreshold: 0.2
+        ) { _ in
+            classificationCount += 1
+            return [
+                BirdDetection(
+                    scientificName: "Turdus merula",
+                    germanName: "Amsel",
+                    confidence: 0.75
+                ),
+                BirdDetection(
+                    scientificName: "Human vocal",
+                    germanName: "Mensch Stimme",
+                    confidence: 0.99
+                ),
+            ]
+        }
+
+        XCTAssertEqual(windows.map(\.startSeconds), [0, 1])
+        XCTAssertEqual(classificationCount, 4)
+        XCTAssertTrue(windows.allSatisfy { window in
+            window.detections.map(\.scientificName) == ["Turdus merula"]
+        })
     }
 
     func testExpertBenchmarkAggregatesTechnicalResults() {

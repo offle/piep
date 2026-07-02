@@ -11,6 +11,9 @@ import SwiftData
 @main
 struct piepApp: App {
 
+    @AppStorage(AppSettings.appLanguageKey)
+    private var appLanguage = AppSettings.defaultAppLanguage
+
     private let modelContainer: ModelContainer = {
         let schema = Schema([
             BirdSpecies.self,
@@ -37,6 +40,7 @@ struct piepApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(\.locale, Locale(identifier: appLanguage))
         }
         .modelContainer(modelContainer)
     }

@@ -172,6 +172,36 @@ final class BirdImageStore {
         return info
     }
 
+    func thumbnailJPEGData(
+        for scientificName: String,
+        sideLength: CGFloat
+    ) -> Data? {
+        guard let info = cachedInfo(for: scientificName),
+              let image = cachedImage(for: info)
+        else {
+            return nil
+        }
+
+        let targetSize = CGSize(width: sideLength, height: sideLength)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let thumbnail = renderer.image { _ in
+            let scale = max(
+                targetSize.width / max(image.size.width, 1),
+                targetSize.height / max(image.size.height, 1)
+            )
+            let drawSize = CGSize(
+                width: image.size.width * scale,
+                height: image.size.height * scale
+            )
+            let origin = CGPoint(
+                x: (targetSize.width - drawSize.width) / 2,
+                y: (targetSize.height - drawSize.height) / 2
+            )
+            image.draw(in: CGRect(origin: origin, size: drawSize))
+        }
+        return thumbnail.jpegData(compressionQuality: 0.72)
+    }
+
     private func cachedGalleryInfo(for scientificName: String) -> [CachedBirdImageInfo] {
         guard let data = try? Data(contentsOf: galleryMetadataURL(for: scientificName)) else {
             return []

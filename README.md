@@ -19,6 +19,8 @@ The app is currently a personal, free, non-commercial project.
 - Wikimedia Commons image loading with local cache and license attribution
 - Configurable confidence threshold and expert audio profiles
 - Manual benchmark sample recording/import for comparing audio profiles
+- Apple Watch companion recording for clips of up to three minutes; analysis
+  runs on the paired iPhone after transfer
 - Alternate app icons
 
 ## Privacy
@@ -26,6 +28,8 @@ The app is currently a personal, free, non-commercial project.
 piep is designed to keep user data local:
 
 - Audio is analyzed on device and is not uploaded by the app.
+- Watch recordings are transferred directly to the paired iPhone, analyzed
+  there, and removed after import.
 - Location is used on device for BirdNET filtering and session coordinates.
 - Sessions and bird detections are stored locally on the device.
 - Optional iCloud Sync can synchronize sessions, detections, and coordinates
@@ -37,6 +41,7 @@ See [PRIVACY.md](PRIVACY.md) for the full privacy policy draft.
 ## Requirements
 
 - Xcode 26 or newer
+- The matching watchOS platform component in Xcode for Watch builds
 - CocoaPods
 - An Apple developer team for device builds or App Store distribution
 

@@ -25,6 +25,40 @@ enum DetectionReviewStatus: String, Codable, CaseIterable {
     }
 }
 
+enum BirdSessionSource: String, Codable, CaseIterable {
+    case iPhone
+    case watch
+    case importedAudio
+
+    var label: String {
+        switch self {
+        case .iPhone:
+            return "iPhone"
+        case .watch:
+            return "Watch"
+        case .importedAudio:
+            return "Audio-Datei"
+        }
+    }
+}
+
+enum BirdSessionAnalysisStatus: String, Codable, CaseIterable {
+    case completed
+    case analyzing
+    case failed
+
+    var label: String {
+        switch self {
+        case .completed:
+            return "fertig"
+        case .analyzing:
+            return "Analyse läuft"
+        case .failed:
+            return "Analyse fehlgeschlagen"
+        }
+    }
+}
+
 @Model
 final class BirdSpecies {
     var id: UUID
@@ -146,18 +180,21 @@ final class BirdSession {
     var deletedAt: Date?
     var syncRecordName: String?
     var lastSyncedAt: Date?
+    var sourceRawValue: String = BirdSessionSource.iPhone.rawValue
+    var analysisStatusRawValue: String = BirdSessionAnalysisStatus.completed.rawValue
 
     @Relationship(deleteRule: .cascade, inverse: \SessionSpeciesObservation.session)
     var observations: [SessionSpeciesObservation]
 
     init(
+        id: UUID = UUID(),
         startedAt: Date = Date(),
         latitude: Double? = nil,
         longitude: Double? = nil,
         locationName: String? = nil
     ) {
         let createdAt = Date()
-        self.id = UUID()
+        self.id = id
         self.startedAt = startedAt
         self.endedAt = nil
         self.latitude = latitude
@@ -168,6 +205,8 @@ final class BirdSession {
         self.deletedAt = nil
         self.syncRecordName = nil
         self.lastSyncedAt = nil
+        self.sourceRawValue = BirdSessionSource.iPhone.rawValue
+        self.analysisStatusRawValue = BirdSessionAnalysisStatus.completed.rawValue
         self.observations = []
     }
 
@@ -175,8 +214,62 @@ final class BirdSession {
         deletedAt != nil
     }
 
+    var source: BirdSessionSource {
+        get {
+            BirdSessionSource(rawValue: sourceRawValue) ?? .iPhone
+        }
+        set {
+            sourceRawValue = newValue.rawValue
+            markUpdated()
+        }
+    }
+
+    var analysisStatus: BirdSessionAnalysisStatus {
+        get {
+            BirdSessionAnalysisStatus(rawValue: analysisStatusRawValue) ?? .completed
+        }
+        set {
+            analysisStatusRawValue = newValue.rawValue
+            markUpdated()
+        }
+    }
+
+    var effectiveAnalysisStatus: BirdSessionAnalysisStatus {
+        guard isStaleExternalAnalysis else {
+            return analysisStatus
+        }
+
+        return storedNonHumanDetections.isEmpty ? .failed : .completed
+    }
+
+    var effectiveEndedAt: Date? {
+        if let endedAt {
+            return endedAt
+        }
+
+        guard isStaleExternalAnalysis else {
+            return nil
+        }
+
+        return storedNonHumanDetections
+            .map(\.lastDetectedAt)
+            .max() ?? startedAt.addingTimeInterval(180)
+    }
+
     var duration: TimeInterval {
-        (endedAt ?? Date()).timeIntervalSince(startedAt)
+        (effectiveEndedAt ?? Date()).timeIntervalSince(startedAt)
+    }
+
+    var isStaleExternalAnalysis: Bool {
+        analysisStatus == .analyzing
+            && source != .iPhone
+            && Date().timeIntervalSince(startedAt) > 300
+    }
+
+    var storedNonHumanDetections: [SessionSpeciesObservation] {
+        observations.filter {
+            !$0.isDeleted && !$0.isExcludedHumanSound
+        }
     }
 
     var locationDescription: String {
@@ -386,7 +479,7 @@ typealias SessionBirdDetection = SessionSpeciesObservation
 @MainActor
 enum LocalDataMigration {
     private static let modelVersionKey = "localDataModelVersion"
-    private static let currentModelVersion = 2
+    private static let currentModelVersion = 5
 
     static func runIfNeeded(modelContext: ModelContext) {
         let defaults = UserDefaults.standard
@@ -411,6 +504,16 @@ enum LocalDataMigration {
                 didChange = true
             }
             if session.updatedAt < session.startedAt {
+                session.updatedAt = session.endedAt ?? session.startedAt
+                didChange = true
+            }
+            if session.analysisStatus == .analyzing,
+               (!session.storedNonHumanDetections.isEmpty || session.isStaleExternalAnalysis)
+            {
+                if session.endedAt == nil {
+                    session.endedAt = session.effectiveEndedAt
+                }
+                session.analysisStatusRawValue = session.effectiveAnalysisStatus.rawValue
                 session.updatedAt = session.endedAt ?? session.startedAt
                 didChange = true
             }

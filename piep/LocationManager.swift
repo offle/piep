@@ -14,7 +14,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
 
     var latitude: Double?
     var longitude: Double?
-    var statusMessage: String = "Standort wird ermittelt…"
+    var statusMessage: String = AppLocalization.text("Standort wird ermittelt…")
 
     var hasLocation: Bool { latitude != nil && longitude != nil }
 
@@ -36,7 +36,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         case .authorizedWhenInUse, .authorizedAlways:
             requestOneShotLocation(resetAttempts: true)
         case .denied, .restricted:
-            statusMessage = "📍 Standort nicht erlaubt"
+            statusMessage = AppLocalization.text("📍 Standort nicht erlaubt")
         @unknown default:
             break
         }
@@ -48,9 +48,11 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
         }
 
         locationRequestAttempts += 1
-        statusMessage = manager.accuracyAuthorization == .reducedAccuracy
-            ? "📍 Ungefährer Standort wird gesucht…"
-            : "📍 Genauer Standort wird gesucht…"
+        statusMessage = AppLocalization.text(
+            manager.accuracyAuthorization == .reducedAccuracy
+                ? "📍 Ungefährer Standort wird gesucht…"
+                : "📍 Genauer Standort wird gesucht…"
+        )
         manager.requestLocation()
     }
 
@@ -84,7 +86,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
             if code == .locationUnknown,
                self.locationRequestAttempts < self.maxLocationRequestAttempts
             {
-                self.statusMessage = "📍 Standort wird gesucht…"
+                self.statusMessage = AppLocalization.text("📍 Standort wird gesucht…")
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled else { return }
                 self.requestOneShotLocation()
@@ -104,7 +106,7 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
             case .authorizedWhenInUse, .authorizedAlways:
                 self.requestOneShotLocation(resetAttempts: true)
             case .denied, .restricted:
-                self.statusMessage = "📍 Standort nicht erlaubt"
+                self.statusMessage = AppLocalization.text("📍 Standort nicht erlaubt")
             default:
                 break
             }
@@ -114,18 +116,18 @@ final class LocationManager: NSObject, CLLocationManagerDelegate {
     private func message(for error: Error) -> String {
         let nsError = error as NSError
         guard let code = CLError.Code(rawValue: nsError.code) else {
-            return "📍 Standort nicht verfügbar"
+            return AppLocalization.text("📍 Standort nicht verfügbar")
         }
 
         switch code {
         case .locationUnknown:
-            return "📍 Standort noch nicht verfügbar"
+            return AppLocalization.text("📍 Standort noch nicht verfügbar")
         case .denied:
-            return "📍 Standort nicht erlaubt"
+            return AppLocalization.text("📍 Standort nicht erlaubt")
         case .network:
-            return "📍 Standortnetzwerk nicht verfügbar"
+            return AppLocalization.text("📍 Standortnetzwerk nicht verfügbar")
         default:
-            return "📍 Standort nicht verfügbar"
+            return AppLocalization.text("📍 Standort nicht verfügbar")
         }
     }
 }

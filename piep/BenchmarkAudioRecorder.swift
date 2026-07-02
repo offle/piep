@@ -17,9 +17,9 @@ struct BenchmarkAudioRecorderStats: Sendable {
 
 final class BenchmarkAudioRecorder: @unchecked Sendable {
 
-    static let maximumDuration: TimeInterval = 30
-    static let sampleRate: Double = 48_000
-    static let maximumSamples = Int(maximumDuration * sampleRate)
+    nonisolated static let maximumDuration: TimeInterval = 30
+    nonisolated static let sampleRate: Double = 48_000
+    nonisolated static let maximumSamples = Int(maximumDuration * sampleRate)
 
     private var audioEngine: AVAudioEngine?
     private let lock = NSLock()

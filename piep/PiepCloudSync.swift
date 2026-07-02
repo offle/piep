@@ -15,8 +15,8 @@ final class PiepCloudSyncManager {
 
     static let shared = PiepCloudSyncManager()
 
-    private(set) var statusText = "Nicht synchronisiert"
-    private(set) var accountText = "unbekannt"
+    private(set) var statusText = AppLocalization.text("Nicht synchronisiert")
+    private(set) var accountText = AppLocalization.text("unbekannt")
     private(set) var remoteSessionCount: Int?
     private(set) var remoteVisibleSessionCount: Int?
     private(set) var remoteObservationCount: Int?
@@ -40,7 +40,7 @@ final class PiepCloudSyncManager {
 
     func syncIfEnabled(modelContext: ModelContext) {
         guard AppSettings.iCloudSyncEnabled else {
-            statusText = "iCloud Sync ist deaktiviert"
+            statusText = AppLocalization.text("iCloud Sync ist deaktiviert")
             return
         }
 
@@ -52,14 +52,14 @@ final class PiepCloudSyncManager {
     func sync(modelContext: ModelContext) async {
         guard !isSyncing else { return }
         guard AppSettings.iCloudSyncEnabled else {
-            statusText = "iCloud Sync ist deaktiviert"
+            statusText = AppLocalization.text("iCloud Sync ist deaktiviert")
             return
         }
 
         isSyncing = true
         lastErrorMessage = nil
         lastUploadIssue = nil
-        statusText = "Synchronisiere..."
+        statusText = AppLocalization.text("Synchronisiere...")
 
         do {
             let accountStatus = try await container.accountStatus()
@@ -84,10 +84,13 @@ final class PiepCloudSyncManager {
             )
 
             lastSyncDate = Date()
-            statusText = "Zuletzt synchronisiert \(Self.timeFormatter.string(from: lastSyncDate!))"
+            statusText = AppLocalization.text(
+                "Zuletzt synchronisiert %@",
+                Self.timeFormatter.string(from: lastSyncDate!)
+            )
         } catch {
             lastErrorMessage = error.localizedDescription
-            statusText = "Sync fehlgeschlagen"
+            statusText = AppLocalization.text("Sync fehlgeschlagen")
         }
 
         isSyncing = false
@@ -338,6 +341,8 @@ final class PiepCloudSyncManager {
         local.latitude = remote.latitude
         local.longitude = remote.longitude
         local.locationName = remote.locationName
+        local.sourceRawValue = remote.source.rawValue
+        local.analysisStatusRawValue = remote.analysisStatus.rawValue
         local.createdAt = min(local.createdAt, remote.createdAt)
         local.updatedAt = remote.updatedAt
         local.deletedAt = PiepConflictResolver.mergedDeletion(
@@ -545,6 +550,8 @@ final class PiepCloudSyncManager {
         setFiniteDouble(session.latitude, for: "latitude", in: record)
         setFiniteDouble(session.longitude, for: "longitude", in: record)
         setOptionalString(session.locationName, for: "locationName", in: record, maxLength: 240)
+        record["source"] = session.source.rawValue
+        record["analysisStatus"] = session.analysisStatus.rawValue
         record["createdAt"] = safeDate(session.createdAt, fallback: session.startedAt)
         record["updatedAt"] = safeDate(session.updatedAt, fallback: session.endedAt ?? session.startedAt)
         setOptionalDate(session.deletedAt, for: "deletedAt", in: record)
@@ -668,17 +675,17 @@ final class PiepCloudSyncManager {
     private static func accountText(for status: CKAccountStatus) -> String {
         switch status {
         case .available:
-            return "verfügbar"
+            return AppLocalization.text("verfügbar")
         case .couldNotDetermine:
-            return "unklar"
+            return AppLocalization.text("unklar")
         case .noAccount:
-            return "kein Account"
+            return AppLocalization.text("kein Account")
         case .restricted:
-            return "eingeschränkt"
+            return AppLocalization.text("eingeschränkt")
         case .temporarilyUnavailable:
-            return "temporär nicht verfügbar"
+            return AppLocalization.text("temporär nicht verfügbar")
         @unknown default:
-            return "unbekannt"
+            return AppLocalization.text("unbekannt")
         }
     }
 
@@ -722,6 +729,8 @@ private struct CloudSession {
     let latitude: Double?
     let longitude: Double?
     let locationName: String?
+    let source: BirdSessionSource
+    let analysisStatus: BirdSessionAnalysisStatus
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
@@ -741,6 +750,13 @@ private struct CloudSession {
         self.latitude = record["latitude"] as? Double
         self.longitude = record["longitude"] as? Double
         self.locationName = record["locationName"] as? String
+        self.source = BirdSessionSource(
+            rawValue: record["source"] as? String ?? BirdSessionSource.iPhone.rawValue
+        ) ?? .iPhone
+        self.analysisStatus = BirdSessionAnalysisStatus(
+            rawValue: record["analysisStatus"] as? String
+                ?? BirdSessionAnalysisStatus.completed.rawValue
+        ) ?? .completed
         self.createdAt = record["createdAt"] as? Date ?? startedAt
         self.updatedAt = record["updatedAt"] as? Date ?? startedAt
         self.deletedAt = record["deletedAt"] as? Date

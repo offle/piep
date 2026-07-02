@@ -25,14 +25,14 @@ final class ExpertBenchmarkViewModel {
     var state: ExpertBenchmarkState = .idle
     var recordingDuration: TimeInterval = 0
     var audioLevel: Float = 0
-    var audioFormat = "Audio noch nicht gestartet"
+    var audioFormat = AppLocalization.text("Audio noch nicht gestartet")
     var processedWindowCount = 0
     var skippedWindowCount = 0
     var processingDuration: TimeInterval?
     var preprocessingSummaries: [ExpertBenchmarkPreprocessingSummary] = []
     var profileResults: [ExpertBenchmarkProfileResult] = []
     var results: [ExpertBenchmarkDetectionResult] = []
-    var statusText = "Noch keine Benchmark-Aufnahme"
+    var statusText = AppLocalization.text("Noch keine Benchmark-Aufnahme")
 
     private var classifier: BirdNETClassifier?
     private let recorder = BenchmarkAudioRecorder()
@@ -60,7 +60,7 @@ final class ExpertBenchmarkViewModel {
     func loadModel() {
         guard classifier == nil else { return }
         state = .loadingModel
-        statusText = "Benchmark-Modell wird geladen"
+        statusText = AppLocalization.text("Benchmark-Modell wird geladen")
 
         Task.detached {
             let cachedSample = Self.loadCachedSample()
@@ -72,12 +72,14 @@ final class ExpertBenchmarkViewModel {
                     self.recordedSamples = cachedSample
                     self.recordingDuration =
                         Double(cachedSample.count) / BenchmarkAudioRecorder.sampleRate
-                    self.audioFormat = "Letztes Sample, 48 kHz, mono"
+                    self.audioFormat = AppLocalization.text("Letztes Sample, 48 kHz, mono")
                 }
                 self.state = self.recordedSamples.isEmpty ? .idle : .ready
-                self.statusText = self.recordedSamples.isEmpty
-                    ? "Bereit für Benchmark-Aufnahme"
-                    : "Aufnahme bereit"
+                self.statusText = AppLocalization.text(
+                    self.recordedSamples.isEmpty
+                        ? "Bereit für Benchmark-Aufnahme"
+                        : "Aufnahme bereit"
+                )
             }
         }
     }
@@ -118,11 +120,11 @@ final class ExpertBenchmarkViewModel {
                 }
             )
             state = .recording
-            statusText = "Benchmark-Aufnahme läuft"
+            statusText = AppLocalization.text("Benchmark-Aufnahme läuft")
             startRecordingTimer()
         } catch {
             state = .failed("Mikrofon-Fehler: \(error.localizedDescription)")
-            statusText = "Benchmark-Aufnahme fehlgeschlagen"
+            statusText = AppLocalization.text("Benchmark-Aufnahme fehlgeschlagen")
         }
     }
 
@@ -137,11 +139,11 @@ final class ExpertBenchmarkViewModel {
 
         if recordedSamples.count < BirdNETClassifier.chunkSamples {
             state = .idle
-            statusText = "Aufnahme zu kurz: mindestens 3 Sekunden"
+            statusText = AppLocalization.text("Aufnahme zu kurz: mindestens 3 Sekunden")
         } else {
             Self.saveCachedSample(recordedSamples)
             state = .ready
-            statusText = "Aufnahme bereit für Benchmark"
+            statusText = AppLocalization.text("Aufnahme bereit für Benchmark")
         }
     }
 
@@ -162,16 +164,16 @@ final class ExpertBenchmarkViewModel {
         recordingDuration = 0
         audioLevel = 0
         state = classifier == nil ? .loadingModel : .idle
-        statusText = classifier == nil
-            ? "Benchmark-Modell wird geladen"
-            : "Noch keine Benchmark-Aufnahme"
+        statusText = AppLocalization.text(
+            classifier == nil ? "Benchmark-Modell wird geladen" : "Noch keine Benchmark-Aufnahme"
+        )
     }
 
     func importSample(from url: URL) {
         guard state != .recording && state != .processing else { return }
 
         state = .processing
-        statusText = "Sample wird geladen"
+        statusText = AppLocalization.text("Sample wird geladen")
         results = []
         processedWindowCount = 0
         skippedWindowCount = 0
@@ -181,22 +183,25 @@ final class ExpertBenchmarkViewModel {
 
         Task.detached {
             do {
-                let samples = try Self.loadAudioSample(from: url)
+                let samples = try AudioSampleLoader.loadMono48k(
+                    from: url,
+                    maximumDuration: BenchmarkAudioRecorder.maximumDuration
+                )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.recordedSamples = samples
                     self.recordingDuration =
                         Double(samples.count) / BenchmarkAudioRecorder.sampleRate
                     self.audioLevel = 0
-                    self.audioFormat = "Datei, 48 kHz, mono"
+                    self.audioFormat = AppLocalization.text("Datei, 48 kHz, mono")
 
                     if samples.count < BirdNETClassifier.chunkSamples {
                         self.state = self.classifier == nil ? .loadingModel : .idle
-                        self.statusText = "Datei zu kurz: mindestens 3 Sekunden"
+                        self.statusText = AppLocalization.text("Datei zu kurz: mindestens 3 Sekunden")
                     } else {
                         Self.saveCachedSample(samples)
                         self.state = self.classifier == nil ? .loadingModel : .ready
-                        self.statusText = "Datei-Sample bereit für Benchmark"
+                        self.statusText = AppLocalization.text("Datei-Sample bereit für Benchmark")
                         if self.classifier == nil {
                             self.loadModel()
                         }
@@ -206,7 +211,7 @@ final class ExpertBenchmarkViewModel {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.state = .failed("Datei-Fehler: \(error.localizedDescription)")
-                    self.statusText = "Datei konnte nicht geladen werden"
+                    self.statusText = AppLocalization.text("Datei konnte nicht geladen werden")
                 }
             }
         }
@@ -226,7 +231,7 @@ final class ExpertBenchmarkViewModel {
         let longitude = locationManager.longitude
 
         state = .processing
-        statusText = "Benchmark wird durchprozessiert"
+        statusText = AppLocalization.text("Benchmark wird durchprozessiert")
         processedWindowCount = 0
         skippedWindowCount = 0
         preprocessingSummaries = []
@@ -293,41 +298,6 @@ final class ExpertBenchmarkViewModel {
         }
     }
 
-
-    private nonisolated static func loadAudioSample(from url: URL) throws -> [Float] {
-        let didStartAccessing = url.startAccessingSecurityScopedResource()
-        defer {
-            if didStartAccessing {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let file = try AVAudioFile(forReading: url)
-        let sourceFormat = file.processingFormat
-        let sourceFrameLimit = min(
-            AVAudioFramePosition(
-                BenchmarkAudioRecorder.maximumDuration * sourceFormat.sampleRate
-            ),
-            file.length
-        )
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: sourceFormat,
-            frameCapacity: AVAudioFrameCount(sourceFrameLimit)
-        ) else {
-            throw AudioInputError.unableToCreateTargetFormat
-        }
-
-        try file.read(into: buffer, frameCount: AVAudioFrameCount(sourceFrameLimit))
-        let sourceSamples = monoSamples(from: buffer)
-        let resampled = resampleLinear(
-            sourceSamples,
-            sourceSampleRate: sourceFormat.sampleRate,
-            targetSampleRate: BenchmarkAudioRecorder.sampleRate
-        )
-
-        return Array(resampled.prefix(BenchmarkAudioRecorder.maximumSamples))
-    }
-
     private nonisolated static func saveCachedSample(_ samples: [Float]) {
         guard !samples.isEmpty else { return }
         let data = samples.withUnsafeBufferPointer { buffer in
@@ -377,49 +347,4 @@ final class ExpertBenchmarkViewModel {
         return directory.appendingPathComponent("LastExpertBenchmarkSample.f32")
     }
 
-    private nonisolated static func monoSamples(from buffer: AVAudioPCMBuffer) -> [Float] {
-        let frameCount = Int(buffer.frameLength)
-        guard frameCount > 0,
-              let channelData = buffer.floatChannelData
-        else {
-            return []
-        }
-
-        let channelCount = Int(buffer.format.channelCount)
-        var mono = [Float](repeating: 0, count: frameCount)
-
-        for frame in 0..<frameCount {
-            var sample: Float = 0
-            for channel in 0..<channelCount {
-                sample += channelData[channel][frame]
-            }
-            mono[frame] = sample / Float(max(channelCount, 1))
-        }
-
-        return mono
-    }
-
-    private nonisolated static func resampleLinear(
-        _ samples: [Float],
-        sourceSampleRate: Double,
-        targetSampleRate: Double
-    ) -> [Float] {
-        guard !samples.isEmpty, sourceSampleRate > 0, targetSampleRate > 0 else {
-            return []
-        }
-        guard sourceSampleRate != targetSampleRate else {
-            return samples
-        }
-
-        let ratio = targetSampleRate / sourceSampleRate
-        let outputCount = max(1, Int(Double(samples.count) * ratio))
-        return (0..<outputCount).map { outputIndex in
-            let sourcePosition = Double(outputIndex) / ratio
-            let lowerIndex = Int(sourcePosition)
-            let upperIndex = min(lowerIndex + 1, samples.count - 1)
-            let fraction = Float(sourcePosition - Double(lowerIndex))
-            return samples[lowerIndex] * (1 - fraction)
-                + samples[upperIndex] * fraction
-        }
-    }
 }

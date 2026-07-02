@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0FCEA8F7C8104CB5630418DD /* ATTRIBUTION.md in Resources */ = {isa = PBXBuildFile; fileRef = 0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */; };
 		289703BD4C5EB2C84F6E18CD /* Pods_piep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1F81ECC049674535450C57D /* Pods_piep.framework */; };
+		A1000000000000000000000A /* piepWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* piepWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B2AD0B6903D1575DD0E5C5CA /* parus_major_xc129643.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 628E02409D775B2C1CEBE994 /* parus_major_xc129643.mp3 */; };
 		CA7E4FAB55E210488B6A0F1E /* turdus_merula_xc125792.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F50B4FBCCE81389945312C1D /* turdus_merula_xc125792.mp3 */; };
 		CE9122B2A7B51A86100F9A04 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CDE0BD9A7E3310225FDD1EAF /* Foundation.framework */; };
@@ -24,7 +25,28 @@
 			remoteGlobalIDString = 7F9C90512FCF71E200573AFC;
 			remoteInfo = piep;
 		};
+		A1000000000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7F9C904A2FCF71E200573AFC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000002;
+			remoteInfo = piepWatch;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A10000000000000000000009 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				A1000000000000000000000A /* piepWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0778DC998BEEF5082B4B7DDF /* ATTRIBUTION.md */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = net.daringfireball.markdown; path = ATTRIBUTION.md; sourceTree = "<group>"; };
@@ -34,6 +56,7 @@
 		7F9C90522FCF71E200573AFC /* piep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = piep.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		833DAC347AAB9D5B04A3641C /* piepTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = piepTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D4917B9432E1A7A1FB83EC4 /* Pods_piepTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_piepTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000001 /* piepWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = piepWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A4EEAF536C17F15F4A0DD314 /* Pods-piep.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-piep.release.xcconfig"; path = "Target Support Files/Pods-piep/Pods-piep.release.xcconfig"; sourceTree = "<group>"; };
 		A83EAA7EAE7CBD6D1B15E0FE /* Pods-piep.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-piep.debug.xcconfig"; path = "Target Support Files/Pods-piep/Pods-piep.debug.xcconfig"; sourceTree = "<group>"; };
 		B1F81ECC049674535450C57D /* Pods_piep.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_piep.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -42,10 +65,28 @@
 		F50B4FBCCE81389945312C1D /* turdus_merula_xc125792.mp3 */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = audio.mp3; path = turdus_merula_xc125792.mp3; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A1000000000000000000000D /* Exceptions for "piepWatch" folder in "piepWatch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A10000000000000000000002 /* piepWatch */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7F9C90542FCF71E200573AFC /* piep */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = piep;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000000 /* piepWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1000000000000000000000D /* Exceptions for "piepWatch" folder in "piepWatch" target */,
+			);
+			path = piepWatch;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -65,6 +106,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				289703BD4C5EB2C84F6E18CD /* Pods_piep.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -102,6 +150,7 @@
 			isa = PBXGroup;
 			children = (
 				7F9C90542FCF71E200573AFC /* piep */,
+				A10000000000000000000000 /* piepWatch */,
 				7F9C90532FCF71E200573AFC /* Products */,
 				FE95BF967EC7AC0A89CC62F1 /* Pods */,
 				4ADC0A74408067025FABCCBA /* Frameworks */,
@@ -113,6 +162,7 @@
 			isa = PBXGroup;
 			children = (
 				7F9C90522FCF71E200573AFC /* piep.app */,
+				A10000000000000000000001 /* piepWatch.app */,
 				833DAC347AAB9D5B04A3641C /* piepTests.xctest */,
 			);
 			name = Products;
@@ -150,11 +200,13 @@
 				7F9C904E2FCF71E200573AFC /* Sources */,
 				7F9C904F2FCF71E200573AFC /* Frameworks */,
 				7F9C90502FCF71E200573AFC /* Resources */,
+				A10000000000000000000009 /* Embed Watch Content */,
 				425CB74894FC14AE956D83CF /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A1000000000000000000000B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				7F9C90542FCF71E200573AFC /* piep */,
@@ -162,6 +214,26 @@
 			name = piep;
 			productName = piep;
 			productReference = 7F9C90522FCF71E200573AFC /* piep.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A10000000000000000000002 /* piepWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000008 /* Build configuration list for PBXNativeTarget "piepWatch" */;
+			buildPhases = (
+				A10000000000000000000003 /* Sources */,
+				A10000000000000000000005 /* Frameworks */,
+				A10000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000000 /* piepWatch */,
+			);
+			name = piepWatch;
+			productName = piepWatch;
+			productReference = A10000000000000000000001 /* piepWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
 		B255D59B99820A7ED238AEFC /* piepTests */ = {
@@ -201,6 +273,9 @@
 							};
 						};
 					};
+					A10000000000000000000002 = {
+						CreatedOnToolsVersion = 26.3;
+					};
 				};
 			};
 			buildConfigurationList = 7F9C904D2FCF71E200573AFC /* Build configuration list for PBXProject "piep" */;
@@ -209,6 +284,7 @@
 			knownRegions = (
 				Base,
 				de,
+				en,
 			);
 			mainGroup = 7F9C90492FCF71E200573AFC;
 			minimizedProjectReferenceProxies = 1;
@@ -218,6 +294,7 @@
 			projectRoot = "";
 			targets = (
 				7F9C90512FCF71E200573AFC /* piep */,
+				A10000000000000000000002 /* piepWatch */,
 				B255D59B99820A7ED238AEFC /* piepTests */,
 			);
 		};
@@ -235,6 +312,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		7F9C90502FCF71E200573AFC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000004 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -327,9 +411,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		A1000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000002 /* piepWatch */;
+			targetProxy = A1000000000000000000000C /* PBXContainerItemProxy */;
+		};
 		FCE18A0B1EF29179B930575A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = piep;
@@ -397,6 +493,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				PIEP_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
@@ -455,6 +552,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				PIEP_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -472,7 +570,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = piep/piep.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
@@ -487,8 +585,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
-				PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
+				MARKETING_VERSION = 1.4;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PIEP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -510,7 +608,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = piep/piep.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
@@ -525,8 +623,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
-				PRODUCT_BUNDLE_IDENTIFIER = org.offlepoffle1.piep;
+				MARKETING_VERSION = 1.4;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PIEP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -535,6 +633,75 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A10000000000000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = piepWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = piep;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "piep nutzt den Standort, um regional plausible Vogelarten zu bestimmen.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "piep nimmt auf der Apple Watch Vogelstimmen für die Analyse auf dem iPhone auf.";
+				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = org.offlepoffle1.piep;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.4;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PIEP_BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		A10000000000000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = piepWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = piep;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "piep nutzt den Standort, um regional plausible Vogelarten zu bestimmen.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "piep nimmt auf der Apple Watch Vogelstimmen für die Analyse auf dem iPhone auf.";
+				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = org.offlepoffle1.piep;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.4;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(PIEP_BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Release;
 		};
@@ -611,6 +778,15 @@
 			buildConfigurations = (
 				7F9C90602FCF71E400573AFC /* Debug */,
 				7F9C90612FCF71E400573AFC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000008 /* Build configuration list for PBXNativeTarget "piepWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000006 /* Debug */,
+				A10000000000000000000007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

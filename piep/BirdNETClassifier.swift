@@ -11,7 +11,7 @@ import TensorFlowLite
 // MARK: - Data Types
 
 /// A single bird detection result.
-struct BirdDetection: Identifiable, Equatable {
+struct BirdDetection: Identifiable, Equatable, Sendable {
     let id = UUID()
     let scientificName: String
     let germanName: String
@@ -20,6 +20,13 @@ struct BirdDetection: Identifiable, Equatable {
     static func == (lhs: BirdDetection, rhs: BirdDetection) -> Bool {
         lhs.scientificName == rhs.scientificName
             && lhs.confidence == rhs.confidence
+    }
+}
+
+extension BirdDetection {
+    nonisolated var isExcludedHumanSound: Bool {
+        scientificName.hasPrefix("Human ")
+            || germanName.hasPrefix("Mensch ")
     }
 }
 
